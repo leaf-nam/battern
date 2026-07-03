@@ -15,6 +15,7 @@ const DEFAULT_ZOOM = 3 // on-screen px per mm — print size is independent of t
 const GRID_MM = 10 // 1cm grid
 const GRID_BOLD_EVERY = 5 // bold line every 5cm
 const MIN_DRAG_MM = 2 // ignore accidental clicks shorter than this
+const SNAP_MM = 6 // endpoints within this radius snap together (needed to actually close a loop)
 const STORAGE_KEY = 'furboaee_patterns_v1'
 
 const INK = '#241f18'
@@ -61,6 +62,49 @@ function curveLengthMm(s, steps = 40) {
     prevY = y
   }
   return total
+}
+
+/**
+ * A pattern is a "closed loop" when every shape endpoint touches exactly one
+ * other shape endpoint (degree === 2 at every joint). This naturally allows
+ * a single self-closing curve, one closed loop made of many segments, or
+ * several independent closed loops — but flags any dangling or branching
+ * point as "open".
+ */
+function computeClosure(shapes) {
+  if (!shapes.length) return { closed: false, openPoints: [] }
+  const endpoints = []
+  shapes.forEach((s) => {
+    endpoints.push({ x: s.x1, y: s.y1 })
+    endpoints.push({ x: s.x2, y: s.y2 })
+  })
+  const groups = []
+  endpoints.forEach((ep) => {
+    const g = groups.find((g) => dist(g.x, g.y, ep.x, ep.y) <= SNAP_MM)
+    if (g) g.count += 1
+    else groups.push({ x: ep.x, y: ep.y, count: 1 })
+  })
+  const openPoints = groups.filter((g) => g.count !== 2)
+  return { closed: openPoints.length === 0, openPoints }
+}
+
+function findSnapTarget(shapes, excludeId, x, y) {
+  let best = null
+  let bestDist = SNAP_MM
+  shapes.forEach((s) => {
+    if (s.id === excludeId) return
+    ;[
+      [s.x1, s.y1],
+      [s.x2, s.y2],
+    ].forEach(([px, py]) => {
+      const d = dist(x, y, px, py)
+      if (d <= bestDist) {
+        bestDist = d
+        best = { x: px, y: py }
+      }
+    })
+  })
+  return best
 }
 
 function shapeToSvgEl(s) {
@@ -165,6 +209,7 @@ export default function App() {
   const [draft, setDraft] = useState(null) // shape being drawn
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null) // {handle} while editing a handle
+  const [snapTarget, setSnapTarget] = useState(null) // endpoint currently being snapped to
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -207,20 +252,33 @@ export default function App() {
 
   function handleSheetMouseDown(e) {
     if (tool === 'select') return
-    const { x, y } = clientToMm(e.clientX, e.clientY)
+    let { x, y } = clientToMm(e.clientX, e.clientY)
+    const snap = findSnapTarget(shapes, null, x, y)
+    if (snap) ({ x, y } = snap)
     dragStartRef.current = { x, y }
     setDraft({ type: tool, x1: x, y1: y, x2: x, y2: y })
+    setSnapTarget(snap)
   }
 
   function handleSheetMouseMove(e) {
-    const { x, y } = clientToMm(e.clientX, e.clientY)
+    let { x, y } = clientToMm(e.clientX, e.clientY)
     setCursorMm({ x, y })
 
     if (draft && dragStartRef.current) {
+      const snap = findSnapTarget(shapes, null, x, y)
+      if (snap) ({ x, y } = snap)
+      setSnapTarget(snap)
       setDraft((d) => ({ ...d, x2: x, y2: y }))
       return
     }
     if (dragging && selectedId) {
+      if (dragging.handle === 'p1' || dragging.handle === 'p2') {
+        const snap = findSnapTarget(shapes, selectedId, x, y)
+        if (snap) ({ x, y } = snap)
+        setSnapTarget(snap)
+      } else {
+        setSnapTarget(null)
+      }
       updateHandle(selectedId, dragging.handle, x, y)
     }
   }
@@ -246,6 +304,7 @@ export default function App() {
       dragStartRef.current = null
     }
     if (dragging) setDragging(null)
+    setSnapTarget(null)
   }
 
   /* ---------------- editing existing shapes ---------------- */
@@ -298,6 +357,8 @@ export default function App() {
   }, [selectedId])
 
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
+  const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
+  const canSave = shapes.length > 0 && closureStatus.closed
 
   /* ---------------- file actions ---------------- */
 
@@ -308,6 +369,7 @@ export default function App() {
   }
 
   function handleExportSvg() {
+    if (!canSave) return
     const svg = buildSvgString(shapes, sheet.w, sheet.h)
     downloadBlob(`furboaee-pattern-${Date.now()}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
   }
@@ -337,11 +399,13 @@ export default function App() {
   }
 
   function openSaveModal() {
+    if (!canSave) return
     setSaveName(`패턴 ${new Date().toLocaleDateString('ko-KR')}`)
     setShowSaveModal(true)
   }
 
   function confirmSave() {
+    if (!canSave) return
     const name = saveName.trim() || '이름 없는 패턴'
     const entry = {
       id: uid(),
@@ -415,7 +479,12 @@ export default function App() {
           <button className="btn" onClick={handleNewPattern}>
             새 패턴
           </button>
-          <button className="btn" onClick={handleExportSvg} disabled={!shapes.length}>
+          <button
+            className="btn"
+            onClick={handleExportSvg}
+            disabled={!canSave}
+            title={!canSave ? '모든 선/곡선의 끝점이 폐곡선을 이루어야 저장할 수 있습니다' : ''}
+          >
             SVG 저장
           </button>
           <button className="btn" onClick={handleExportPng} disabled={!shapes.length}>
@@ -424,7 +493,12 @@ export default function App() {
           <button className="btn" onClick={handlePrint} disabled={!shapes.length}>
             인쇄 (1:1)
           </button>
-          <button className="btn btn-gold" onClick={openSaveModal} disabled={!shapes.length}>
+          <button
+            className="btn btn-gold"
+            onClick={openSaveModal}
+            disabled={!canSave}
+            title={!canSave ? '모든 선/곡선의 끝점이 폐곡선을 이루어야 저장할 수 있습니다' : ''}
+          >
             보관함에 저장
           </button>
         </div>
@@ -562,6 +636,16 @@ export default function App() {
                   <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
                 )
               )}
+
+              {/* endpoints that are not yet part of a closed loop */}
+              {closureStatus.openPoints.map((p, i) => (
+                <circle key={`open${i}`} className="open-point-marker" cx={p.x} cy={p.y} r={3.4} fill="none" stroke="#c1443c" strokeWidth={0.8} />
+              ))}
+
+              {/* live highlight for the endpoint about to be snapped to */}
+              {snapTarget && (
+                <circle cx={snapTarget.x} cy={snapTarget.y} r={4.2} fill="none" stroke="#e3b23c" strokeWidth={0.9} />
+              )}
             </svg>
           </div>
 
@@ -574,6 +658,15 @@ export default function App() {
             </span>
             <span>
               확대: <strong>{zoom}px/mm</strong>
+            </span>
+            <span>
+              {closureStatus.closed ? (
+                <strong style={{ color: '#8fbf6c' }}>폐곡선 완성 ✓</strong>
+              ) : shapes.length ? (
+                <strong style={{ color: '#c1443c' }}>열린 점 {closureStatus.openPoints.length}개 — 이어서 그려야 저장 가능</strong>
+              ) : (
+                '폐곡선을 그리면 저장할 수 있습니다'
+              )}
             </span>
             <div style={{ flex: 1 }} />
             <div className="field-row" style={{ gap: 4 }}>
@@ -610,6 +703,7 @@ export default function App() {
                 onSelect={(id) => setSelectedId(id)}
                 onDelete={deleteShape}
                 onLengthChange={setLineLengthCm}
+                closureStatus={closureStatus}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />
@@ -673,9 +767,31 @@ function Handle({ x, y, gold, onDown }) {
 /*  Properties panel                                                    */
 /* ------------------------------------------------------------------ */
 
-function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange }) {
+function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange, closureStatus }) {
   return (
     <>
+      <p className="panel-section-title">저장 조건</p>
+      <div
+        className="field"
+        style={{
+          padding: '10px 12px',
+          borderRadius: 3,
+          border: `1px solid ${closureStatus.closed ? '#3c5c33' : 'var(--charcoal-3)'}`,
+          background: closureStatus.closed ? 'rgba(143,191,108,0.08)' : 'var(--charcoal-2)',
+          fontSize: 12,
+          lineHeight: 1.6,
+        }}
+      >
+        {closureStatus.closed ? (
+          <span style={{ color: '#8fbf6c' }}>모든 점이 폐곡선을 이루고 있어요. 저장할 수 있습니다.</span>
+        ) : (
+          <span style={{ color: 'var(--muted)' }}>
+            모든 선/곡선의 끝점은 다른 하나의 끝점과 정확히 맞닿아야 저장할 수 있습니다. 끝점을 다른 끝점 근처(약 0.6cm 이내)로 그리거나 드래그하면 자동으로 붙습니다.
+            {closureStatus.openPoints.length > 0 && <> 현재 열린 점 <strong style={{ color: '#c1443c' }}>{closureStatus.openPoints.length}개</strong>가 남아 있어요.</>}
+          </span>
+        )}
+      </div>
+
       <p className="panel-section-title">용지 크기</p>
       <div className="field">
         <select

@@ -17,6 +17,8 @@ const baseProps = {
   onBackgroundUpload: vi.fn(),
   onBackgroundRemove: vi.fn(),
   multiCount: 0,
+  selectionBounds: null,
+  onResizeBounds: vi.fn(),
 }
 
 describe('PropertiesPanel', () => {
@@ -126,6 +128,20 @@ describe('PropertiesPanel', () => {
     it('does not show multi-select info when multiCount is 0', () => {
       render(<PropertiesPanel {...baseProps} />)
       expect(screen.queryByText(/개 요소 선택됨/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('크기 조절', () => {
+    it('shows width/height inputs when selectionBounds is provided', () => {
+      render(<PropertiesPanel {...baseProps} selectionBounds={{ x: 0, y: 0, w: 100, h: 50 }} />)
+      expect(screen.getByText('크기 조절')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('10.0')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('5.0')).toBeInTheDocument()
+    })
+
+    it('does not show 크기 조절 section when selectionBounds is null', () => {
+      render(<PropertiesPanel {...baseProps} />)
+      expect(screen.queryByText('크기 조절')).not.toBeInTheDocument()
     })
   })
 })

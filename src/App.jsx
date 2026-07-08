@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM } from './constants.js'
+import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, downloadBlob } from './utils/svg.js'
@@ -30,6 +30,7 @@ export default function App() {
 
   const [marquee, setMarquee] = useState(null)
   const moveRef = useRef(null)  // { prevX, prevY, ids } when moving, null when idle
+  const resizeRef = useRef(null)  // { handle, box, startX, startY, ids, snapshot } when resizing, null when idle
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -126,13 +127,82 @@ export default function App() {
       return
     }
 
+    if (resizeRef.current) {
+      const { handle, box, ids, snapshot } = resizeRef.current
+      let nbx = box.x, nby = box.y, nbw = box.w, nbh = box.h
+      switch (handle) {
+        case 'se': nbw = x - box.x; nbh = y - box.y; break
+        case 'nw': nbx = x; nby = y; nbw = box.x + box.w - x; nbh = box.y + box.h - y; break
+        case 'ne': nby = y; nbw = x - box.x; nbh = box.y + box.h - y; break
+        case 'sw': nbx = x; nbw = box.x + box.w - x; nbh = y - box.y; break
+        case 'n': nby = y; nbh = box.y + box.h - y; break
+        case 's': nbh = y - box.y; break
+        case 'e': nbw = x - box.x; break
+        case 'w': nbx = x; nbw = box.x + box.w - x; break
+      }
+      if (nbw < 3) nbw = 3
+      if (nbh < 3) nbh = 3
+      if (box.w > 0 && box.h > 0) {
+        const idSet = new Set(ids)
+        const scale = (p, off, size, newOff, newSize) => newOff + ((p - off) / size) * newSize
+        setShapes(snapshot.map((s) => {
+          if (!idSet.has(s.id)) return s
+          const r = {
+            ...s,
+            x1: scale(s.x1, box.x, box.w, nbx, nbw),
+            y1: scale(s.y1, box.y, box.h, nby, nbh),
+            x2: scale(s.x2, box.x, box.w, nbx, nbw),
+            y2: scale(s.y2, box.y, box.h, nby, nbh),
+          }
+          if (s.type === 'curve') {
+            r.c1x = scale(s.c1x, box.x, box.w, nbx, nbw)
+            r.c1y = scale(s.c1y, box.y, box.h, nby, nbh)
+            r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
+            r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
+          }
+          return r
+        }))
+      }
+      return
+    }
+
     if (moveRef.current) {
-      const dx = x - moveRef.current.prevX
-      const dy = y - moveRef.current.prevY
+      let dx = x - moveRef.current.prevX
+      let dy = y - moveRef.current.prevY
       const ids = moveRef.current.ids
+      const idSet = new Set(ids)
+
+      let snapDx = 0, snapDy = 0
+      let bestDist = SNAP_MM
+      let snapTargetPt = null
+      for (const s of shapes) {
+        if (!idSet.has(s.id)) continue
+        const endpts = [[s.x1, s.y1], [s.x2, s.y2]]
+        for (const [ex, ey] of endpts) {
+          const cx = ex + dx
+          const cy = ey + dy
+          for (const other of shapes) {
+            if (idSet.has(other.id)) continue
+            const oEndpts = [[other.x1, other.y1], [other.x2, other.y2]]
+            for (const [ox, oy] of oEndpts) {
+              const d = dist(cx, cy, ox, oy)
+              if (d <= bestDist) {
+                bestDist = d
+                snapDx = ox - cx
+                snapDy = oy - cy
+                snapTargetPt = { x: ox, y: oy }
+              }
+            }
+          }
+        }
+      }
+      dx += snapDx
+      dy += snapDy
+      setSnapTarget(snapTargetPt)
+
       setShapes((prev) =>
         prev.map((s) => {
-          if (!ids.has(s.id)) return s
+          if (!idSet.has(s.id)) return s
           return {
             ...s,
             x1: s.x1 + dx,
@@ -196,15 +266,26 @@ export default function App() {
             return sL < right && sR > left && sT < bottom && sB > top
           })
           .map((s) => s.id)
-        setSelectedIds(ids)
-        setSelectedId(ids.length > 0 ? ids[0] : null)
+        if (ids.length === 1) {
+          setSelectedIds([])
+          setSelectedId(ids[0])
+        } else {
+          setSelectedIds(ids)
+          setSelectedId(null)
+        }
       }
       setMarquee(null)
       return
     }
 
+    if (resizeRef.current) {
+      resizeRef.current = null
+      return
+    }
+
     if (moveRef.current) {
       moveRef.current = null
+      setSnapTarget(null)
       return
     }
 
@@ -313,6 +394,58 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedId, selectedIds])
+
+  function computeBounds(ids) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const s of shapes) {
+      if (!ids.has(s.id)) continue
+      const pts = [s.x1, s.y1, s.x2, s.y2]
+      if (s.type === 'curve') pts.push(s.c1x, s.c1y, s.c2x, s.c2y)
+      for (let i = 0; i < pts.length; i += 2) {
+        if (pts[i] < minX) minX = pts[i]
+        if (pts[i] > maxX) maxX = pts[i]
+        if (pts[i + 1] < minY) minY = pts[i + 1]
+        if (pts[i + 1] > maxY) maxY = pts[i + 1]
+      }
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+  }
+
+  function handleResizeStart(e, handle) {
+    e.stopPropagation()
+    e.preventDefault()
+    const { x, y } = clientToMm(e.clientX, e.clientY)
+    const ids = selectedIds.length > 0 ? new Set(selectedIds) : new Set([selectedId])
+    if (ids.size === 0) return
+    const box = computeBounds(ids)
+    saveForUndo()
+    resizeRef.current = { handle, startX: x, startY: y, box, ids: [...ids], snapshot: shapes.slice() }
+  }
+
+  function scaleShapes(ids, box, nbx, nby, nbw, nbh) {
+    if (box.w === 0 || box.h === 0) return
+    const idSet = new Set(ids)
+    setShapes((prev) =>
+      prev.map((s) => {
+        if (!idSet.has(s.id)) return s
+        const scale = (p, off, size, newOff, newSize) => newOff + ((p - off) / size) * newSize
+        const r = {
+          ...s,
+          x1: scale(s.x1, box.x, box.w, nbx, nbw),
+          y1: scale(s.y1, box.y, box.h, nby, nbh),
+          x2: scale(s.x2, box.x, box.w, nbx, nbw),
+          y2: scale(s.y2, box.y, box.h, nby, nbh),
+        }
+        if (s.type === 'curve') {
+          r.c1x = scale(s.c1x, box.x, box.w, nbx, nbw)
+          r.c1y = scale(s.c1y, box.y, box.h, nby, nbh)
+          r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
+          r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
+        }
+        return r
+      }),
+    )
+  }
 
   /* ---------------- zoom ---------------- */
 
@@ -465,6 +598,11 @@ export default function App() {
   /* ---------------- render ---------------- */
 
   const selSet = new Set(selectedIds)
+  const selectionBounds = useMemo(() => {
+    const idList = selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : [])
+    if (idList.length === 0) return null
+    return computeBounds(new Set(idList))
+  }, [shapes, selectedIds, selectedId])
 
   return (
     <div className="app">
@@ -568,7 +706,7 @@ export default function App() {
               onMouseDown={handleSheetMouseDown}
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
-              onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null }}
+              onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null; resizeRef.current = null; setSnapTarget(null) }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -671,6 +809,49 @@ export default function App() {
                 )
               )}
 
+              {selectionBounds && tool === 'select' && selectedIds.length > 1 && (
+                <>
+                  <rect
+                    x={selectionBounds.x}
+                    y={selectionBounds.y}
+                    width={selectionBounds.w}
+                    height={selectionBounds.h}
+                    fill="none"
+                    stroke="#4a9eff"
+                    strokeWidth={0.3}
+                    strokeDasharray="2 1.5"
+                  />
+                  {['nw','n','ne','e','se','s','sw','w'].map((h) => {
+                    let hx, hy
+                    switch (h) {
+                      case 'nw': hx = selectionBounds.x; hy = selectionBounds.y; break
+                      case 'n': hx = selectionBounds.x + selectionBounds.w / 2; hy = selectionBounds.y; break
+                      case 'ne': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y; break
+                      case 'e': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y + selectionBounds.h / 2; break
+                      case 'se': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y + selectionBounds.h; break
+                      case 's': hx = selectionBounds.x + selectionBounds.w / 2; hy = selectionBounds.y + selectionBounds.h; break
+                      case 'sw': hx = selectionBounds.x; hy = selectionBounds.y + selectionBounds.h; break
+                      case 'w': hx = selectionBounds.x; hy = selectionBounds.y + selectionBounds.h / 2; break
+                    }
+                    const cursors = { nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize', e: 'e-resize', se: 'se-resize', s: 's-resize', sw: 'sw-resize', w: 'w-resize' }
+                    return (
+                      <rect
+                        key={h}
+                        x={hx - 2.5}
+                        y={hy - 2.5}
+                        width={5}
+                        height={5}
+                        fill="#fff"
+                        stroke="#4a9eff"
+                        strokeWidth={0.5}
+                        style={{ cursor: cursors[h] }}
+                        onMouseDown={(e) => handleResizeStart(e, h)}
+                      />
+                    )
+                  })}
+                </>
+              )}
+
               {marquee && (
                 <rect
                   x={Math.min(marquee.x1, marquee.x2)}
@@ -754,9 +935,16 @@ export default function App() {
                 selectedShape={selectedShape}
                 selectedId={selectedId}
                 multiCount={selectedIds.length > 1 ? selectedIds.length : 0}
+                selectionBounds={selectionBounds}
                 onSelect={(id) => setSelectedId(id)}
                 onDelete={deleteShape}
                 onLengthChange={setLineLengthCm}
+                onResizeBounds={(nbw, nbh) => {
+                  const ids = selectedIds.length > 0 ? new Set(selectedIds) : (selectedId ? new Set([selectedId]) : null)
+                  if (!ids || !selectionBounds) return
+                  saveForUndo()
+                  scaleShapes([...ids], selectionBounds, selectionBounds.x, selectionBounds.y, nbw, nbh)
+                }}
                 closureStatus={closureStatus}
                 backgroundImage={backgroundImage}
                 onBackgroundUpload={handleBackgroundUpload}

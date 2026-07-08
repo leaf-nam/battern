@@ -1,7 +1,7 @@
 import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
-export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, onSelect, onDelete, onLengthChange, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
+export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
   return (
     <>
       {multiCount > 0 && (
@@ -9,6 +9,46 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
           <strong style={{ color: '#4a9eff' }}>{multiCount}개 요소 선택됨</strong> — Delete 키로 일괄 삭제할 수 있습니다.
         </div>
       )}
+      {selectionBounds && (
+        <>
+          <p className="panel-section-title">크기 조절</p>
+          <div className="field-row" style={{ gap: 6 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>폭 (cm)</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={(selectionBounds.w / 10).toFixed(1)}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value)
+                  if (v > 0 && onResizeBounds) {
+                    const origH = selectionBounds.h
+                    onResizeBounds(v * 10, origH)
+                  }
+                }}
+              />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>높이 (cm)</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={(selectionBounds.h / 10).toFixed(1)}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value)
+                  if (v > 0 && onResizeBounds) {
+                    const origW = selectionBounds.w
+                    onResizeBounds(origW, v * 10)
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       <p className="panel-section-title">저장 조건</p>
       <div
         className="field"

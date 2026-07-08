@@ -318,6 +318,36 @@ describe('App — 선택 이동', () => {
     expect(movedX1).not.toBe(10)
   })
 
+  it('renders bounding box and resize handles when multiple shapes are selected', async () => {
+    renderApp()
+    const svg = getSvg()
+    Object.defineProperty(svg, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 400 * 3, height: 300 * 3 }),
+      configurable: true,
+    })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 30, clientY: 30, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 30, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 30, clientY: 60, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 60, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })) })
+
+    await userEvent.click(toolBtn('선택 / 편집'))
+
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 10, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 200, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    const handles = svg.querySelectorAll('rect[fill="#fff"]')
+    expect(handles.length).toBe(8)
+  })
+
   it('single-selected shape shows red line with handles', () => {
     renderApp()
     const svg = getSvg()

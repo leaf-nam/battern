@@ -1,199 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-/* ------------------------------------------------------------------ */
-/*  Constants                                                          */
-/* ------------------------------------------------------------------ */
-
-const SHEET_PRESETS = {
-  block: { label: '패턴 블록 (400×300mm)', w: 400, h: 300 },
-  a4: { label: 'A4 (210×297mm)', w: 210, h: 297 },
-  a3: { label: 'A3 (297×420mm)', w: 297, h: 420 },
-}
-
-const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6]
-const DEFAULT_ZOOM = 3 // on-screen px per mm — print size is independent of this
-const GRID_MM = 10 // 1cm grid
-const GRID_BOLD_EVERY = 5 // bold line every 5cm
-const MIN_DRAG_MM = 2 // ignore accidental clicks shorter than this
-const SNAP_MM = 6 // endpoints within this radius snap together (needed to actually close a loop)
-const STORAGE_KEY = 'furboaee_patterns_v1'
-
-const INK = '#241f18'
-const STROKE_MM = 0.7
-
-/* ------------------------------------------------------------------ */
-/*  Geometry helpers                                                   */
-/* ------------------------------------------------------------------ */
-
-function dist(x1, y1, x2, y2) {
-  return Math.hypot(x2 - x1, y2 - y1)
-}
-
-function makeDefaultCurve(x1, y1, x2, y2) {
-  const len = dist(x1, y1, x2, y2)
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const px = len === 0 ? 0 : -dy / len
-  const py = len === 0 ? 0 : dx / len
-  const bow = Math.min(24, Math.max(8, len * 0.18))
-  return {
-    c1x: x1 + dx * 0.33 + px * bow,
-    c1y: y1 + dy * 0.33 + py * bow,
-    c2x: x1 + dx * 0.66 + px * bow,
-    c2y: y1 + dy * 0.66 + py * bow,
-  }
-}
-
-function cubicPoint(t, p0, p1, p2, p3) {
-  const mt = 1 - t
-  return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3
-}
-
-function curveLengthMm(s, steps = 40) {
-  let total = 0
-  let prevX = s.x1
-  let prevY = s.y1
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps
-    const x = cubicPoint(t, s.x1, s.c1x, s.c2x, s.x2)
-    const y = cubicPoint(t, s.y1, s.c1y, s.c2y, s.y2)
-    total += dist(prevX, prevY, x, y)
-    prevX = x
-    prevY = y
-  }
-  return total
-}
-
-/**
- * A pattern is a "closed loop" when every shape endpoint touches exactly one
- * other shape endpoint (degree === 2 at every joint). This naturally allows
- * a single self-closing curve, one closed loop made of many segments, or
- * several independent closed loops — but flags any dangling or branching
- * point as "open".
- */
-function computeClosure(shapes) {
-  if (!shapes.length) return { closed: false, openPoints: [] }
-  const endpoints = []
-  shapes.forEach((s) => {
-    endpoints.push({ x: s.x1, y: s.y1 })
-    endpoints.push({ x: s.x2, y: s.y2 })
-  })
-  const groups = []
-  endpoints.forEach((ep) => {
-    const g = groups.find((g) => dist(g.x, g.y, ep.x, ep.y) <= SNAP_MM)
-    if (g) g.count += 1
-    else groups.push({ x: ep.x, y: ep.y, count: 1 })
-  })
-  const openPoints = groups.filter((g) => g.count !== 2)
-  return { closed: openPoints.length === 0, openPoints }
-}
-
-function findSnapTarget(shapes, excludeId, x, y) {
-  let best = null
-  let bestDist = SNAP_MM
-  shapes.forEach((s) => {
-    if (s.id === excludeId) return
-    ;[
-      [s.x1, s.y1],
-      [s.x2, s.y2],
-    ].forEach(([px, py]) => {
-      const d = dist(x, y, px, py)
-      if (d <= bestDist) {
-        bestDist = d
-        best = { x: px, y: py }
-      }
-    })
-  })
-  return best
-}
-
-function shapeToSvgEl(s) {
-  if (s.type === 'line') {
-    return `<line x1="${s.x1.toFixed(2)}" y1="${s.y1.toFixed(2)}" x2="${s.x2.toFixed(2)}" y2="${s.y2.toFixed(2)}" stroke="${INK}" stroke-width="${STROKE_MM}" stroke-linecap="round"/>`
-  }
-  return `<path d="M ${s.x1.toFixed(2)},${s.y1.toFixed(2)} C ${s.c1x.toFixed(2)},${s.c1y.toFixed(2)} ${s.c2x.toFixed(2)},${s.c2y.toFixed(2)} ${s.x2.toFixed(2)},${s.y2.toFixed(2)}" fill="none" stroke="${INK}" stroke-width="${STROKE_MM}" stroke-linecap="round"/>`
-}
-
-function buildSvgString(shapes, wMm, hMm) {
-  const body = shapes.map(shapeToSvgEl).join('\n  ')
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wMm} ${hMm}" width="${(wMm / 10).toFixed(2)}cm" height="${(hMm / 10).toFixed(2)}cm">
-  <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>
-  ${body}
-</svg>`
-}
-
-function downloadBlob(filename, blob) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10)
-}
-
-/* ------------------------------------------------------------------ */
-/*  Small presentational bits                                          */
-/* ------------------------------------------------------------------ */
-
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 40 40" className="brand-mark" aria-hidden="true">
-      <circle cx="20" cy="20" r="19" fill="#0b0b0c" stroke="#e3b23c" strokeWidth="1.4" />
-      <path
-        d="M9 24c4-6 9-10 11-10s2 2-1 5-9 8-8 10 6-1 10-5 4-8 3-9"
-        fill="none"
-        stroke="#e3b23c"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="26" r="1.3" fill="#e3b23c" />
-      <circle cx="28" cy="14" r="1.3" fill="#e3b23c" />
-    </svg>
-  )
-}
-
-const ICONS = {
-  select: (
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M5 3l5.5 15 2-6.5L19 9.5 5 3z" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  ),
-  line: (
-    <svg viewBox="0 0 24 24" fill="none">
-      <circle cx="5" cy="19" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="5" r="1.6" fill="currentColor" stroke="none" />
-      <path d="M5 19L19 5" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  ),
-  curve: (
-    <svg viewBox="0 0 24 24" fill="none">
-      <circle cx="4" cy="19" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="20" cy="6" r="1.6" fill="currentColor" stroke="none" />
-      <path d="M4 19C10 19 8 6 20 6" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  ),
-  trash: (
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  seam: (
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M4 18L20 6" strokeWidth="1.4" strokeDasharray="2 2" />
-      <path d="M4 21L20 9" strokeWidth="1.4" />
-    </svg>
-  ),
-}
-
-/* ------------------------------------------------------------------ */
-/*  Main app                                                            */
-/* ------------------------------------------------------------------ */
+import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM } from './constants.js'
+import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
+import { computeClosure } from './utils/closure.js'
+import { buildSvgString, downloadBlob } from './utils/svg.js'
+import { uid } from './utils/uid.js'
+import { BrandMark, ICONS } from './icons.jsx'
+import Handle from './components/Handle.jsx'
+import PropertiesPanel from './components/PropertiesPanel.jsx'
+import LibraryPanel from './components/LibraryPanel.jsx'
+import SaveModal from './components/SaveModal.jsx'
 
 export default function App() {
   const [sheetKey, setSheetKey] = useState('block')
@@ -206,10 +22,10 @@ export default function App() {
   const [panelTab, setPanelTab] = useState('properties')
   const [cursorMm, setCursorMm] = useState(null)
 
-  const [draft, setDraft] = useState(null) // shape being drawn
+  const [draft, setDraft] = useState(null)
   const dragStartRef = useRef(null)
-  const [dragging, setDragging] = useState(null) // {handle} while editing a handle
-  const [snapTarget, setSnapTarget] = useState(null) // endpoint currently being snapped to
+  const [dragging, setDragging] = useState(null)
+  const [snapTarget, setSnapTarget] = useState(null)
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -380,7 +196,7 @@ export default function App() {
     const url = URL.createObjectURL(blob)
     const img = new Image()
     img.onload = () => {
-      const PX_PER_MM = 150 / 25.4 // ~150 dpi raster for a crisp print-quality PNG
+      const PX_PER_MM = 150 / 25.4
       const canvas = document.createElement('canvas')
       canvas.width = Math.round(sheet.w * PX_PER_MM)
       canvas.height = Math.round(sheet.h * PX_PER_MM)
@@ -582,7 +398,6 @@ export default function App() {
                     }}
                     style={{ cursor: tool === 'select' ? 'pointer' : 'crosshair' }}
                   >
-                    {/* fat invisible hit area for easier selection */}
                     {s.type === 'line' ? (
                       <>
                         <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="transparent" strokeWidth={6} />
@@ -637,12 +452,10 @@ export default function App() {
                 )
               )}
 
-              {/* endpoints that are not yet part of a closed loop */}
               {closureStatus.openPoints.map((p, i) => (
                 <circle key={`open${i}`} className="open-point-marker" cx={p.x} cy={p.y} r={3.4} fill="none" stroke="#c1443c" strokeWidth={0.8} />
               ))}
 
-              {/* live highlight for the endpoint about to be snapped to */}
               {snapTarget && (
                 <circle cx={snapTarget.x} cy={snapTarget.y} r={4.2} fill="none" stroke="#e3b23c" strokeWidth={0.9} />
               )}
@@ -713,201 +526,13 @@ export default function App() {
       </div>
 
       {showSaveModal && (
-        <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowSaveModal(false)}>
-          <div className="modal">
-            <h3>보관함에 저장</h3>
-            <div className="field">
-              <label>패턴 이름</label>
-              <input
-                type="text"
-                value={saveName}
-                autoFocus
-                onChange={(e) => setSaveName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && confirmSave()}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setShowSaveModal(false)}>
-                취소
-              </button>
-              <button className="btn btn-gold" onClick={confirmSave}>
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
+        <SaveModal
+          saveName={saveName}
+          onNameChange={setSaveName}
+          onConfirm={confirmSave}
+          onCancel={() => setShowSaveModal(false)}
+        />
       )}
     </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Handle (draggable control point)                                   */
-/* ------------------------------------------------------------------ */
-
-function Handle({ x, y, gold, onDown }) {
-  return (
-    <circle
-      cx={x}
-      cy={y}
-      r={2.6}
-      fill={gold ? '#e3b23c' : '#c1443c'}
-      stroke="#0b0b0c"
-      strokeWidth={0.5}
-      style={{ cursor: 'grab' }}
-      onMouseDown={(e) => {
-        e.stopPropagation()
-        onDown()
-      }}
-    />
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Properties panel                                                    */
-/* ------------------------------------------------------------------ */
-
-function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange, closureStatus }) {
-  return (
-    <>
-      <p className="panel-section-title">저장 조건</p>
-      <div
-        className="field"
-        style={{
-          padding: '10px 12px',
-          borderRadius: 3,
-          border: `1px solid ${closureStatus.closed ? '#3c5c33' : 'var(--charcoal-3)'}`,
-          background: closureStatus.closed ? 'rgba(143,191,108,0.08)' : 'var(--charcoal-2)',
-          fontSize: 12,
-          lineHeight: 1.6,
-        }}
-      >
-        {closureStatus.closed ? (
-          <span style={{ color: '#8fbf6c' }}>모든 점이 폐곡선을 이루고 있어요. 저장할 수 있습니다.</span>
-        ) : (
-          <span style={{ color: 'var(--muted)' }}>
-            모든 선/곡선의 끝점은 다른 하나의 끝점과 정확히 맞닿아야 저장할 수 있습니다. 끝점을 다른 끝점 근처(약 0.6cm 이내)로 그리거나 드래그하면 자동으로 붙습니다.
-            {closureStatus.openPoints.length > 0 && <> 현재 열린 점 <strong style={{ color: '#c1443c' }}>{closureStatus.openPoints.length}개</strong>가 남아 있어요.</>}
-          </span>
-        )}
-      </div>
-
-      <p className="panel-section-title">용지 크기</p>
-      <div className="field">
-        <select
-          value={sheetKey}
-          onChange={(e) => onSheetChange(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '8px 10px',
-            background: 'var(--charcoal-2)',
-            border: '1px solid var(--charcoal-3)',
-            color: 'var(--paper)',
-            borderRadius: 3,
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12.5,
-          }}
-        >
-          {Object.entries(SHEET_PRESETS).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <p className="panel-section-title" style={{ marginTop: 20 }}>
-        선택한 요소
-      </p>
-
-      {!selectedShape && <p className="empty-hint">캔버스에서 직선 또는 곡선을 클릭해 선택하세요. 선택 도구가 켜져 있어야 합니다.</p>}
-
-      {selectedShape && selectedShape.type === 'line' && (
-        <>
-          <div className="field">
-            <label>길이 (cm)</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0.1"
-              value={(Math.hypot(selectedShape.x2 - selectedShape.x1, selectedShape.y2 - selectedShape.y1) / 10).toFixed(1)}
-              onChange={(e) => onLengthChange(selectedShape.id, parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <button className="btn btn-danger" onClick={() => onDelete(selectedShape.id)}>
-            이 요소 삭제
-          </button>
-        </>
-      )}
-
-      {selectedShape && selectedShape.type === 'curve' && (
-        <>
-          <div className="field">
-            <label>대략 길이 (cm)</label>
-            <input type="text" readOnly value={(curveLengthMm(selectedShape) / 10).toFixed(1)} />
-          </div>
-          <p className="empty-hint">금색 손잡이(조절점)를 드래그하면 곡률이 바뀝니다. 빨간 손잡이는 끝점입니다.</p>
-          <button className="btn btn-danger" onClick={() => onDelete(selectedShape.id)}>
-            이 요소 삭제
-          </button>
-        </>
-      )}
-
-      {shapes.length > 0 && (
-        <>
-          <p className="panel-section-title" style={{ marginTop: 22 }}>
-            전체 요소 ({shapes.length})
-          </p>
-          <ul className="shape-list">
-            {shapes.map((s, i) => (
-              <li key={s.id} className={`shape-row ${s.id === selectedId ? 'selected' : ''}`} onClick={() => onSelect(s.id)}>
-                <span>
-                  <span className="tag">{s.type === 'line' ? '직선' : '곡선'}</span>#{i + 1}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
-                  {(s.type === 'line' ? Math.hypot(s.x2 - s.x1, s.y2 - s.y1) : curveLengthMm(s)) / 10 | 0}cm
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      <div className="roadmap-note">
-        <strong>다음 버전 예정:</strong> 시접 자동 생성, 태블릿 펜 압력 인식, 패턴 사진 AI 분석, 버전 관리, 여러 장 분할 인쇄
-      </div>
-    </>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Library panel                                                       */
-/* ------------------------------------------------------------------ */
-
-function LibraryPanel({ savedPatterns, onLoad, onDelete }) {
-  if (!savedPatterns.length) {
-    return <p className="empty-hint">아직 저장된 패턴이 없습니다. 상단의 “보관함에 저장” 버튼으로 현재 작업을 저장하세요.</p>
-  }
-  return (
-    <ul className="saved-list">
-      {savedPatterns.map((p) => (
-        <li key={p.id} className="saved-row">
-          <div className="saved-row-top">
-            <span className="saved-row-name">{p.name}</span>
-          </div>
-          <div className="saved-row-meta">
-            {new Date(p.createdAt).toLocaleString('ko-KR')} · 요소 {p.shapes.length}개
-          </div>
-          <div className="saved-row-actions">
-            <button className="btn btn-gold" onClick={() => onLoad(p)}>
-              불러오기
-            </button>
-            <button className="btn btn-danger" onClick={() => onDelete(p.id)}>
-              삭제
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
   )
 }

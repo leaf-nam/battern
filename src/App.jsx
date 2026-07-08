@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM } from './constants.js'
+import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, downloadBlob } from './utils/svg.js'
@@ -17,6 +17,7 @@ export default function App() {
 
   const [shapes, setShapes] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
   const [tool, setTool] = useState('line')
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [panelTab, setPanelTab] = useState('properties')
@@ -26,6 +27,10 @@ export default function App() {
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null)
   const [snapTarget, setSnapTarget] = useState(null)
+
+  const [marquee, setMarquee] = useState(null)
+  const moveRef = useRef(null)  // { prevX, prevY, ids } when moving, null when idle
+  const resizeRef = useRef(null)  // { handle, box, startX, startY, ids, snapshot } when resizing, null when idle
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -96,11 +101,16 @@ export default function App() {
     [zoom, sheet.w, sheet.h],
   )
 
-  /* ---------------- drawing new shapes ---------------- */
+  /* ---------------- drawing / marquee / handle drag ---------------- */
 
   function handleSheetMouseDown(e) {
-    if (tool === 'select') return
     let { x, y } = clientToMm(e.clientX, e.clientY)
+
+    if (tool === 'select') {
+      setMarquee({ x1: x, y1: y, x2: x, y2: y })
+      return
+    }
+
     const snap = findSnapTarget(shapes, null, x, y)
     if (snap) ({ x, y } = snap)
     dragStartRef.current = { x, y }
@@ -111,6 +121,103 @@ export default function App() {
   function handleSheetMouseMove(e) {
     let { x, y } = clientToMm(e.clientX, e.clientY)
     setCursorMm({ x, y })
+
+    if (marquee) {
+      setMarquee((m) => ({ ...m, x2: x, y2: y }))
+      return
+    }
+
+    if (resizeRef.current) {
+      const { handle, box, ids, snapshot } = resizeRef.current
+      let nbx = box.x, nby = box.y, nbw = box.w, nbh = box.h
+      switch (handle) {
+        case 'se': nbw = x - box.x; nbh = y - box.y; break
+        case 'nw': nbx = x; nby = y; nbw = box.x + box.w - x; nbh = box.y + box.h - y; break
+        case 'ne': nby = y; nbw = x - box.x; nbh = box.y + box.h - y; break
+        case 'sw': nbx = x; nbw = box.x + box.w - x; nbh = y - box.y; break
+        case 'n': nby = y; nbh = box.y + box.h - y; break
+        case 's': nbh = y - box.y; break
+        case 'e': nbw = x - box.x; break
+        case 'w': nbx = x; nbw = box.x + box.w - x; break
+      }
+      if (nbw < 3) nbw = 3
+      if (nbh < 3) nbh = 3
+      if (box.w > 0 && box.h > 0) {
+        const idSet = new Set(ids)
+        const scale = (p, off, size, newOff, newSize) => newOff + ((p - off) / size) * newSize
+        setShapes(snapshot.map((s) => {
+          if (!idSet.has(s.id)) return s
+          const r = {
+            ...s,
+            x1: scale(s.x1, box.x, box.w, nbx, nbw),
+            y1: scale(s.y1, box.y, box.h, nby, nbh),
+            x2: scale(s.x2, box.x, box.w, nbx, nbw),
+            y2: scale(s.y2, box.y, box.h, nby, nbh),
+          }
+          if (s.type === 'curve') {
+            r.c1x = scale(s.c1x, box.x, box.w, nbx, nbw)
+            r.c1y = scale(s.c1y, box.y, box.h, nby, nbh)
+            r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
+            r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
+          }
+          return r
+        }))
+      }
+      return
+    }
+
+    if (moveRef.current) {
+      let dx = x - moveRef.current.prevX
+      let dy = y - moveRef.current.prevY
+      const ids = moveRef.current.ids
+      const idSet = new Set(ids)
+
+      let snapDx = 0, snapDy = 0
+      let bestDist = SNAP_MM
+      let snapTargetPt = null
+      for (const s of shapes) {
+        if (!idSet.has(s.id)) continue
+        const endpts = [[s.x1, s.y1], [s.x2, s.y2]]
+        for (const [ex, ey] of endpts) {
+          const cx = ex + dx
+          const cy = ey + dy
+          for (const other of shapes) {
+            if (idSet.has(other.id)) continue
+            const oEndpts = [[other.x1, other.y1], [other.x2, other.y2]]
+            for (const [ox, oy] of oEndpts) {
+              const d = dist(cx, cy, ox, oy)
+              if (d <= bestDist) {
+                bestDist = d
+                snapDx = ox - cx
+                snapDy = oy - cy
+                snapTargetPt = { x: ox, y: oy }
+              }
+            }
+          }
+        }
+      }
+      dx += snapDx
+      dy += snapDy
+      setSnapTarget(snapTargetPt)
+
+      setShapes((prev) =>
+        prev.map((s) => {
+          if (!idSet.has(s.id)) return s
+          return {
+            ...s,
+            x1: s.x1 + dx,
+            y1: s.y1 + dy,
+            x2: s.x2 + dx,
+            y2: s.y2 + dy,
+            ...(s.type === 'curve'
+              ? { c1x: s.c1x + dx, c1y: s.c1y + dy, c2x: s.c2x + dx, c2y: s.c2y + dy }
+              : {}),
+          }
+        }),
+      )
+      moveRef.current = { ...moveRef.current, prevX: x, prevY: y }
+      return
+    }
 
     if (draft && dragStartRef.current) {
       const snap = findSnapTarget(shapes, null, x, y)
@@ -132,6 +239,56 @@ export default function App() {
   }
 
   function handleSheetMouseUp() {
+    if (marquee) {
+      const { x1, y1, x2, y2 } = marquee
+      const w = Math.abs(x2 - x1)
+      const h = Math.abs(y2 - y1)
+      if (w < MIN_DRAG_MM && h < MIN_DRAG_MM) {
+        setSelectedIds([])
+        setSelectedId(null)
+      } else {
+        const left = Math.min(x1, x2)
+        const right = Math.max(x1, x2)
+        const top = Math.min(y1, y2)
+        const bottom = Math.max(y1, y2)
+        const ids = shapes
+          .filter((s) => {
+            const xs = [s.x1, s.x2]
+            const ys = [s.y1, s.y2]
+            if (s.type === 'curve') {
+              xs.push(s.c1x, s.c2x)
+              ys.push(s.c1y, s.c2y)
+            }
+            const sL = Math.min(...xs)
+            const sR = Math.max(...xs)
+            const sT = Math.min(...ys)
+            const sB = Math.max(...ys)
+            return sL < right && sR > left && sT < bottom && sB > top
+          })
+          .map((s) => s.id)
+        if (ids.length === 1) {
+          setSelectedIds([])
+          setSelectedId(ids[0])
+        } else {
+          setSelectedIds(ids)
+          setSelectedId(null)
+        }
+      }
+      setMarquee(null)
+      return
+    }
+
+    if (resizeRef.current) {
+      resizeRef.current = null
+      return
+    }
+
+    if (moveRef.current) {
+      moveRef.current = null
+      setSnapTarget(null)
+      return
+    }
+
     if (draft && dragStartRef.current) {
       const { x1, y1, x2, y2 } = draft
       const len = dist(x1, y1, x2, y2)
@@ -147,7 +304,6 @@ export default function App() {
         setShapes((prev) => [...prev, newShape])
         setSelectedId(id)
         setPanelTab('properties')
-        if (draft.type === 'curve') setTool('select')
       }
       setDraft(null)
       dragStartRef.current = null
@@ -190,9 +346,36 @@ export default function App() {
 
   function deleteShape(id) {
     saveForUndo()
-    setShapes((prev) => prev.filter((s) => s.id !== id))
-    if (selectedId === id) setSelectedId(null)
+    if (selectedIds.length > 1 && selectedIds.includes(id)) {
+      const idsToRemove = new Set(selectedIds)
+      setShapes((prev) => prev.filter((s) => !idsToRemove.has(s.id)))
+      setSelectedId(null)
+      setSelectedIds([])
+    } else {
+      setShapes((prev) => prev.filter((s) => s.id !== id))
+      if (selectedId === id) setSelectedId(null)
+      setSelectedIds([])
+    }
   }
+
+  function deleteSelectedShapes() {
+    if (selectedIds.length > 0) {
+      saveForUndo()
+      const idsToRemove = new Set(selectedIds)
+      setShapes((prev) => prev.filter((s) => !idsToRemove.has(s.id)))
+      setSelectedId(null)
+      setSelectedIds([])
+    } else if (selectedId) {
+      deleteShape(selectedId)
+    }
+  }
+
+  useEffect(() => {
+    if (tool !== 'select') {
+      setSelectedId(null)
+      setSelectedIds([])
+    }
+  }, [tool])
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -203,14 +386,101 @@ export default function App() {
         undo()
         return
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) {
         e.preventDefault()
-        deleteShape(selectedId)
+        deleteSelectedShapes()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId])
+  }, [selectedId, selectedIds])
+
+  function computeBounds(ids) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const s of shapes) {
+      if (!ids.has(s.id)) continue
+      const pts = [s.x1, s.y1, s.x2, s.y2]
+      if (s.type === 'curve') pts.push(s.c1x, s.c1y, s.c2x, s.c2y)
+      for (let i = 0; i < pts.length; i += 2) {
+        if (pts[i] < minX) minX = pts[i]
+        if (pts[i] > maxX) maxX = pts[i]
+        if (pts[i + 1] < minY) minY = pts[i + 1]
+        if (pts[i + 1] > maxY) maxY = pts[i + 1]
+      }
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+  }
+
+  function handleResizeStart(e, handle) {
+    e.stopPropagation()
+    e.preventDefault()
+    const { x, y } = clientToMm(e.clientX, e.clientY)
+    const ids = selectedIds.length > 0 ? new Set(selectedIds) : new Set([selectedId])
+    if (ids.size === 0) return
+    const box = computeBounds(ids)
+    saveForUndo()
+    resizeRef.current = { handle, startX: x, startY: y, box, ids: [...ids], snapshot: shapes.slice() }
+  }
+
+  function scaleShapes(ids, box, nbx, nby, nbw, nbh) {
+    if (box.w === 0 || box.h === 0) return
+    const idSet = new Set(ids)
+    setShapes((prev) =>
+      prev.map((s) => {
+        if (!idSet.has(s.id)) return s
+        const scale = (p, off, size, newOff, newSize) => newOff + ((p - off) / size) * newSize
+        const r = {
+          ...s,
+          x1: scale(s.x1, box.x, box.w, nbx, nbw),
+          y1: scale(s.y1, box.y, box.h, nby, nbh),
+          x2: scale(s.x2, box.x, box.w, nbx, nbw),
+          y2: scale(s.y2, box.y, box.h, nby, nbh),
+        }
+        if (s.type === 'curve') {
+          r.c1x = scale(s.c1x, box.x, box.w, nbx, nbw)
+          r.c1y = scale(s.c1y, box.y, box.h, nby, nbh)
+          r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
+          r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
+        }
+        return r
+      }),
+    )
+  }
+
+  /* ---------------- zoom ---------------- */
+
+  function zoomToFit() {
+    if (shapes.length === 0) {
+      setZoom(DEFAULT_ZOOM)
+      return
+    }
+    let minX = sheet.w, minY = sheet.h, maxX = 0, maxY = 0
+    shapes.forEach((s) => {
+      const xs = [s.x1, s.x2]
+      const ys = [s.y1, s.y2]
+      if (s.type === 'curve') {
+        xs.push(s.c1x, s.c2x)
+        ys.push(s.c1y, s.c2y)
+      }
+      for (const v of xs) { if (v < minX) minX = v; if (v > maxX) maxX = v }
+      for (const v of ys) { if (v < minY) minY = v; if (v > maxY) maxY = v }
+    })
+    const contentW = maxX - minX + 20
+    const contentH = maxY - minY + 20
+    const fitW = sheet.w / contentW
+    const fitH = sheet.h / contentH
+    const fit = Math.min(fitW, fitH)
+    const nearest = ZOOM_STEPS.reduce((prev, curr) =>
+      Math.abs(curr - fit) < Math.abs(prev - fit) ? curr : prev
+    )
+    setZoom(Math.max(1, nearest))
+  }
+
+  function zoomReset() {
+    setZoom(DEFAULT_ZOOM)
+  }
+
+  /* ---------------- computed ---------------- */
 
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
   const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
@@ -224,6 +494,7 @@ export default function App() {
     setShapes([])
     setBackgroundImage(null)
     setSelectedId(null)
+    setSelectedIds([])
   }
 
   function handleExportSvg() {
@@ -289,6 +560,7 @@ export default function App() {
     setBackgroundImage(entry.backgroundImage ?? null)
     setIncludeBgExport(true)
     setSelectedId(null)
+    setSelectedIds([])
     setPanelTab('properties')
   }
 
@@ -324,6 +596,13 @@ export default function App() {
   ]
 
   /* ---------------- render ---------------- */
+
+  const selSet = new Set(selectedIds)
+  const selectionBounds = useMemo(() => {
+    const idList = selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : [])
+    if (idList.length === 0) return null
+    return computeBounds(new Set(idList))
+  }, [shapes, selectedIds, selectedId])
 
   return (
     <div className="app">
@@ -399,8 +678,8 @@ export default function App() {
 
           <button
             className="tool-btn"
-            onClick={() => selectedId && deleteShape(selectedId)}
-            disabled={!selectedId}
+            onClick={deleteSelectedShapes}
+            disabled={!selectedId && selectedIds.length === 0}
             title="선택한 요소 삭제"
           >
             {ICONS.trash}
@@ -427,7 +706,7 @@ export default function App() {
               onMouseDown={handleSheetMouseDown}
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
-              onMouseLeave={() => setCursorMm(null)}
+              onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null; resizeRef.current = null; setSnapTarget(null) }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -444,16 +723,35 @@ export default function App() {
               ))}
 
               {shapes.map((s) => {
-                const isSelected = s.id === selectedId
-                const stroke = isSelected ? '#c1443c' : INK
+                const isActive = selectedIds.length === 0 && s.id === selectedId
+                const isMultiSel = !isActive && selSet.has(s.id)
+                const stroke = isActive ? '#c1443c' : isMultiSel ? '#4a9eff' : INK
                 return (
                   <g
                     key={s.id}
+                    data-testid="shape"
                     onMouseDown={(e) => {
                       if (tool !== 'select') return
                       e.stopPropagation()
-                      setSelectedId(s.id)
-                      setPanelTab('properties')
+                      if (selectedIds.length > 0) {
+                        if (selSet.has(s.id)) {
+                          const { x, y } = clientToMm(e.clientX, e.clientY)
+                          saveForUndo()
+                          moveRef.current = { prevX: x, prevY: y, ids: new Set(selSet) }
+                        } else {
+                          setSelectedIds((prev) => [...prev, s.id])
+                        }
+                        return
+                      }
+                      if (s.id === selectedId) {
+                        const { x, y } = clientToMm(e.clientX, e.clientY)
+                        saveForUndo()
+                        moveRef.current = { prevX: x, prevY: y, ids: new Set([s.id]) }
+                      } else {
+                        setSelectedId(s.id)
+                        setSelectedIds([])
+                        setPanelTab('properties')
+                      }
                     }}
                     style={{ cursor: tool === 'select' ? 'pointer' : 'crosshair' }}
                   >
@@ -480,14 +778,14 @@ export default function App() {
                       </>
                     )}
 
-                    {isSelected && s.type === 'curve' && (
+                    {isActive && s.type === 'curve' && (
                       <>
                         <line x1={s.x1} y1={s.y1} x2={s.c1x} y2={s.c1y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                         <line x1={s.x2} y1={s.y2} x2={s.c2x} y2={s.c2y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                       </>
                     )}
 
-                    {isSelected && (
+                    {isActive && (
                       <>
                         <Handle x={s.x1} y={s.y1} onDown={() => { saveForUndo(); setDragging({ handle: 'p1' }) }} />
                         <Handle x={s.x2} y={s.y2} onDown={() => { saveForUndo(); setDragging({ handle: 'p2' }) }} />
@@ -511,6 +809,62 @@ export default function App() {
                 )
               )}
 
+              {selectionBounds && tool === 'select' && selectedIds.length > 1 && (
+                <>
+                  <rect
+                    x={selectionBounds.x}
+                    y={selectionBounds.y}
+                    width={selectionBounds.w}
+                    height={selectionBounds.h}
+                    fill="none"
+                    stroke="#4a9eff"
+                    strokeWidth={0.3}
+                    strokeDasharray="2 1.5"
+                  />
+                  {['nw','n','ne','e','se','s','sw','w'].map((h) => {
+                    let hx, hy
+                    switch (h) {
+                      case 'nw': hx = selectionBounds.x; hy = selectionBounds.y; break
+                      case 'n': hx = selectionBounds.x + selectionBounds.w / 2; hy = selectionBounds.y; break
+                      case 'ne': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y; break
+                      case 'e': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y + selectionBounds.h / 2; break
+                      case 'se': hx = selectionBounds.x + selectionBounds.w; hy = selectionBounds.y + selectionBounds.h; break
+                      case 's': hx = selectionBounds.x + selectionBounds.w / 2; hy = selectionBounds.y + selectionBounds.h; break
+                      case 'sw': hx = selectionBounds.x; hy = selectionBounds.y + selectionBounds.h; break
+                      case 'w': hx = selectionBounds.x; hy = selectionBounds.y + selectionBounds.h / 2; break
+                    }
+                    const cursors = { nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize', e: 'e-resize', se: 'se-resize', s: 's-resize', sw: 'sw-resize', w: 'w-resize' }
+                    return (
+                      <rect
+                        key={h}
+                        x={hx - 2.5}
+                        y={hy - 2.5}
+                        width={5}
+                        height={5}
+                        fill="#fff"
+                        stroke="#4a9eff"
+                        strokeWidth={0.5}
+                        style={{ cursor: cursors[h] }}
+                        onMouseDown={(e) => handleResizeStart(e, h)}
+                      />
+                    )
+                  })}
+                </>
+              )}
+
+              {marquee && (
+                <rect
+                  x={Math.min(marquee.x1, marquee.x2)}
+                  y={Math.min(marquee.y1, marquee.y2)}
+                  width={Math.abs(marquee.x2 - marquee.x1)}
+                  height={Math.abs(marquee.y2 - marquee.y1)}
+                  fill="rgba(227, 178, 60, 0.08)"
+                  stroke="#e3b23c"
+                  strokeWidth={0.5}
+                  strokeDasharray="2 1.5"
+                />
+              )}
+
               {closureStatus.openPoints.map((p, i) => (
                 <circle key={`open${i}`} className="open-point-marker" cx={p.x} cy={p.y} r={3.4} fill="none" stroke="#c1443c" strokeWidth={0.8} />
               ))}
@@ -532,7 +886,9 @@ export default function App() {
               확대: <strong>{zoom}px/mm</strong>
             </span>
             <span>
-              {closureStatus.closed ? (
+              {selectedIds.length > 1 ? (
+                <strong style={{ color: '#4a9eff' }}>{selectedIds.length}개 선택됨</strong>
+              ) : closureStatus.closed ? (
                 <strong style={{ color: '#8fbf6c' }}>폐곡선 완성 ✓</strong>
               ) : shapes.length ? (
                 <strong style={{ color: '#c1443c' }}>열린 점 {closureStatus.openPoints.length}개 — 이어서 그려야 저장 가능</strong>
@@ -542,6 +898,12 @@ export default function App() {
             </span>
             <div style={{ flex: 1 }} />
             <div className="field-row" style={{ gap: 4 }}>
+              <button className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={zoomToFit} title="전체 축소">
+                전체축소
+              </button>
+              <button className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={zoomReset} title="기본 확대">
+                기본확대
+              </button>
               {ZOOM_STEPS.map((z) => (
                 <button key={z} className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={() => setZoom(z)}>
                   {z}×
@@ -572,9 +934,17 @@ export default function App() {
                 shapes={shapes}
                 selectedShape={selectedShape}
                 selectedId={selectedId}
+                multiCount={selectedIds.length > 1 ? selectedIds.length : 0}
+                selectionBounds={selectionBounds}
                 onSelect={(id) => setSelectedId(id)}
                 onDelete={deleteShape}
                 onLengthChange={setLineLengthCm}
+                onResizeBounds={(nbw, nbh) => {
+                  const ids = selectedIds.length > 0 ? new Set(selectedIds) : (selectedId ? new Set([selectedId]) : null)
+                  if (!ids || !selectionBounds) return
+                  saveForUndo()
+                  scaleShapes([...ids], selectionBounds, selectionBounds.x, selectionBounds.y, nbw, nbh)
+                }}
                 closureStatus={closureStatus}
                 backgroundImage={backgroundImage}
                 onBackgroundUpload={handleBackgroundUpload}

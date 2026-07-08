@@ -164,6 +164,31 @@ describe('App — 인쇄 / PNG', () => {
   })
 })
 
+describe('App — 배경 사진', () => {
+  it('shows "이미지 선택" in properties panel initially', () => {
+    renderApp()
+    expect(screen.getByText('이미지 선택')).toBeInTheDocument()
+  })
+
+  it('renders hidden file input', () => {
+    renderApp()
+    const input = document.querySelector('input[type="file"]')
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveAttribute('accept', 'image/*')
+  })
+
+  it('새 패턴 clears background image', async () => {
+    renderApp()
+    await userEvent.click(screen.getByText('새 패턴'))
+    expect(screen.getByText('이미지 선택')).toBeInTheDocument()
+  })
+
+  it('does not show "내보내기에 포함" checkbox when no background', () => {
+    renderApp()
+    expect(screen.queryByText('내보내기에 포함')).not.toBeInTheDocument()
+  })
+})
+
 describe('App — 줌 버튼', () => {
   it('renders zoom step buttons', () => {
     renderApp()

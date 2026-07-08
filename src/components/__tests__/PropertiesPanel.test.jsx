@@ -13,6 +13,9 @@ const baseProps = {
   onDelete: vi.fn(),
   onLengthChange: vi.fn(),
   closureStatus: { closed: false, openPoints: [] },
+  backgroundImage: null,
+  onBackgroundUpload: vi.fn(),
+  onBackgroundRemove: vi.fn(),
 }
 
 describe('PropertiesPanel', () => {
@@ -59,5 +62,57 @@ describe('PropertiesPanel', () => {
     ]
     render(<PropertiesPanel {...baseProps} shapes={shapes} />)
     expect(screen.getByText(/전체 요소 \(2\)/)).toBeInTheDocument()
+  })
+
+  describe('배경 사진', () => {
+    it('shows "이미지 선택" button when no background', () => {
+      render(<PropertiesPanel {...baseProps} />)
+      expect(screen.getByText('이미지 선택')).toBeInTheDocument()
+    })
+
+    it('shows "배경 제거" button when background is set', () => {
+      render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" />)
+      expect(screen.getByText('배경 제거')).toBeInTheDocument()
+      expect(screen.queryByText('이미지 선택')).not.toBeInTheDocument()
+    })
+
+    it('calls onBackgroundUpload when 이미지 선택 is clicked', async () => {
+      const onBackgroundUpload = vi.fn()
+      render(<PropertiesPanel {...baseProps} onBackgroundUpload={onBackgroundUpload} />)
+      await userEvent.click(screen.getByText('이미지 선택'))
+      expect(onBackgroundUpload).toHaveBeenCalled()
+    })
+
+    it('calls onBackgroundRemove when 배경 제거 is clicked', async () => {
+      const onBackgroundRemove = vi.fn()
+      render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" onBackgroundRemove={onBackgroundRemove} />)
+      await userEvent.click(screen.getByText('배경 제거'))
+      expect(onBackgroundRemove).toHaveBeenCalled()
+    })
+
+    it('shows "내보내기에 포함" checkbox when background is set', () => {
+      render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={true} onToggleBgExport={() => {}} />)
+      expect(screen.getByText('내보내기에 포함')).toBeInTheDocument()
+      const checkbox = screen.getByRole('checkbox')
+      expect(checkbox).toBeChecked()
+    })
+
+    it('checkbox is unchecked when includeBgExport is false', () => {
+      render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={false} onToggleBgExport={() => {}} />)
+      const checkbox = screen.getByRole('checkbox')
+      expect(checkbox).not.toBeChecked()
+    })
+
+    it('does not show checkbox when no background', () => {
+      render(<PropertiesPanel {...baseProps} />)
+      expect(screen.queryByText('내보내기에 포함')).not.toBeInTheDocument()
+    })
+
+    it('calls onToggleBgExport when checkbox is clicked', async () => {
+      const onToggleBgExport = vi.fn()
+      render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={true} onToggleBgExport={onToggleBgExport} />)
+      await userEvent.click(screen.getByRole('checkbox'))
+      expect(onToggleBgExport).toHaveBeenCalled()
+    })
   })
 })

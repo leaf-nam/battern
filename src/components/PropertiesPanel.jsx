@@ -1,7 +1,7 @@
 import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
-export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange, closureStatus }) {
+export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
   return (
     <>
       <p className="panel-section-title">저장 조건</p>
@@ -48,6 +48,57 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
             </option>
           ))}
         </select>
+      </div>
+
+      <p className="panel-section-title" style={{ marginTop: 20 }}>배경 사진</p>
+      <div className="field">
+        {backgroundImage ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              style={{
+                width: '100%',
+                height: 80,
+                borderRadius: 3,
+                backgroundImage: `url(${backgroundImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                border: '1px solid var(--charcoal-3)',
+              }}
+            />
+            <button className="btn btn-danger" onClick={onBackgroundRemove} style={{ fontSize: 11, padding: '5px 9px' }}>
+              배경 제거
+            </button>
+          </div>
+        ) : (
+          <button className="btn" onClick={onBackgroundUpload} style={{ width: '100%' }}>
+            이미지 선택
+          </button>
+        )}
+        {backgroundImage && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12,
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              marginTop: 4,
+              marginBottom: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={includeBgExport}
+              onChange={onToggleBgExport}
+              style={{ accentColor: 'var(--gold)' }}
+            />
+            내보내기에 포함
+          </label>
+        )}
+        <p className="empty-hint" style={{ marginTop: backgroundImage ? 0 : 6, marginBottom: 0, fontSize: 11 }}>
+          선택한 이미지가 캔버스 배경으로 표시됩니다. SVG/PNG 내보내기에 포함됩니다.
+        </p>
       </div>
 
       <p className="panel-section-title" style={{ marginTop: 20 }}>

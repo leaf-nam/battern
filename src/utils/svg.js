@@ -7,11 +7,15 @@ function shapeToSvgEl(s) {
   return `<path d="M ${s.x1.toFixed(2)},${s.y1.toFixed(2)} C ${s.c1x.toFixed(2)},${s.c1y.toFixed(2)} ${s.c2x.toFixed(2)},${s.c2y.toFixed(2)} ${s.x2.toFixed(2)},${s.y2.toFixed(2)}" fill="none" stroke="${INK}" stroke-width="${STROKE_MM}" stroke-linecap="round"/>`
 }
 
-export function buildSvgString(shapes, wMm, hMm) {
+export function buildSvgString(shapes, wMm, hMm, backgroundImage) {
+  const extra = []
+  if (backgroundImage) {
+    extra.push(`  <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}"/>`)
+  }
   const body = shapes.map(shapeToSvgEl).join('\n  ')
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wMm} ${hMm}" width="${(wMm / 10).toFixed(2)}cm" height="${(hMm / 10).toFixed(2)}cm">
   <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>
-  ${body}
+${extra.join('\n')}  ${body}
 </svg>`
 }
 

@@ -46,4 +46,11 @@ export const ICONS = {
       <path d="M4 21L20 9" strokeWidth="1.4" />
     </svg>
   ),
+  background: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="4" width="20" height="16" rx="1.5" strokeWidth="1.6" />
+      <circle cx="8.5" cy="10.5" r="2" strokeWidth="1.4" />
+      <path d="M2 17l5-5 3 3 4-4 8 8" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  ),
 }

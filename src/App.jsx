@@ -29,6 +29,7 @@ export default function App() {
   const [snapTarget, setSnapTarget] = useState(null)
 
   const [marquee, setMarquee] = useState(null)
+  const moveRef = useRef(null)  // { prevX, prevY, ids } when moving, null when idle
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -125,6 +126,29 @@ export default function App() {
       return
     }
 
+    if (moveRef.current) {
+      const dx = x - moveRef.current.prevX
+      const dy = y - moveRef.current.prevY
+      const ids = moveRef.current.ids
+      setShapes((prev) =>
+        prev.map((s) => {
+          if (!ids.has(s.id)) return s
+          return {
+            ...s,
+            x1: s.x1 + dx,
+            y1: s.y1 + dy,
+            x2: s.x2 + dx,
+            y2: s.y2 + dy,
+            ...(s.type === 'curve'
+              ? { c1x: s.c1x + dx, c1y: s.c1y + dy, c2x: s.c2x + dx, c2y: s.c2y + dy }
+              : {}),
+          }
+        }),
+      )
+      moveRef.current = { ...moveRef.current, prevX: x, prevY: y }
+      return
+    }
+
     if (draft && dragStartRef.current) {
       const snap = findSnapTarget(shapes, null, x, y)
       if (snap) ({ x, y } = snap)
@@ -179,6 +203,11 @@ export default function App() {
       return
     }
 
+    if (moveRef.current) {
+      moveRef.current = null
+      return
+    }
+
     if (draft && dragStartRef.current) {
       const { x1, y1, x2, y2 } = draft
       const len = dist(x1, y1, x2, y2)
@@ -194,7 +223,6 @@ export default function App() {
         setShapes((prev) => [...prev, newShape])
         setSelectedId(id)
         setPanelTab('properties')
-        if (draft.type === 'curve') setTool('select')
       }
       setDraft(null)
       dragStartRef.current = null
@@ -260,6 +288,13 @@ export default function App() {
       deleteShape(selectedId)
     }
   }
+
+  useEffect(() => {
+    if (tool !== 'select') {
+      setSelectedId(null)
+      setSelectedIds([])
+    }
+  }, [tool])
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -533,7 +568,7 @@ export default function App() {
               onMouseDown={handleSheetMouseDown}
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
-              onMouseLeave={() => { setCursorMm(null); setMarquee(null) }}
+              onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -550,18 +585,35 @@ export default function App() {
               ))}
 
               {shapes.map((s) => {
-                const isActive = s.id === selectedId
+                const isActive = selectedIds.length === 0 && s.id === selectedId
                 const isMultiSel = !isActive && selSet.has(s.id)
                 const stroke = isActive ? '#c1443c' : isMultiSel ? '#4a9eff' : INK
                 return (
                   <g
                     key={s.id}
+                    data-testid="shape"
                     onMouseDown={(e) => {
                       if (tool !== 'select') return
                       e.stopPropagation()
-                      setSelectedId(s.id)
-                      if (!selSet.has(s.id)) setSelectedIds([])
-                      setPanelTab('properties')
+                      if (selectedIds.length > 0) {
+                        if (selSet.has(s.id)) {
+                          const { x, y } = clientToMm(e.clientX, e.clientY)
+                          saveForUndo()
+                          moveRef.current = { prevX: x, prevY: y, ids: new Set(selSet) }
+                        } else {
+                          setSelectedIds((prev) => [...prev, s.id])
+                        }
+                        return
+                      }
+                      if (s.id === selectedId) {
+                        const { x, y } = clientToMm(e.clientX, e.clientY)
+                        saveForUndo()
+                        moveRef.current = { prevX: x, prevY: y, ids: new Set([s.id]) }
+                      } else {
+                        setSelectedId(s.id)
+                        setSelectedIds([])
+                        setPanelTab('properties')
+                      }
                     }}
                     style={{ cursor: tool === 'select' ? 'pointer' : 'crosshair' }}
                   >

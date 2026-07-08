@@ -280,3 +280,54 @@ describe('App — 다중 선택 삭제', () => {
     expect(screen.getByTitle('선택한 요소 삭제')).not.toBeDisabled()
   })
 })
+
+describe('App — 선택 이동', () => {
+  async function drawOneLine(svg) {
+    Object.defineProperty(svg, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 400 * 3, height: 300 * 3 }),
+      configurable: true,
+    })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 30, clientY: 30, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 30, bubbles: true })) })
+    act(() => { svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })) })
+  }
+
+  it('drags a selected line in select tool to move its position', async () => {
+    renderApp()
+    const svg = getSvg()
+    drawOneLine(svg)
+
+    await userEvent.click(toolBtn('선택 / 편집'))
+
+    const shapeGroup = document.querySelector('[data-testid="shape"]')
+    const lineEl = shapeGroup.querySelector('line')
+    const initialX1 = parseFloat(lineEl.getAttribute('x1'))
+    expect(initialX1).toBe(10)
+
+    act(() => {
+      shapeGroup.dispatchEvent(new MouseEvent('mousedown', { clientX: 75, clientY: 30, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 50, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    const movedX1 = parseFloat(lineEl.getAttribute('x1'))
+    expect(movedX1).not.toBe(10)
+  })
+
+  it('single-selected shape shows red line with handles', () => {
+    renderApp()
+    const svg = getSvg()
+    drawOneLine(svg)
+
+    const shapeGroup = document.querySelector('[data-testid="shape"]')
+    const visualLine = shapeGroup.querySelector('line:not([stroke="transparent"])')
+    expect(visualLine.getAttribute('stroke')).toBe('#c1443c')
+
+    const circles = shapeGroup.querySelectorAll('circle')
+    expect(circles.length).toBe(2)
+  })
+})

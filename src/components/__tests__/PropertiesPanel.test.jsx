@@ -16,6 +16,7 @@ const baseProps = {
   backgroundImage: null,
   onBackgroundUpload: vi.fn(),
   onBackgroundRemove: vi.fn(),
+  multiCount: 0,
 }
 
 describe('PropertiesPanel', () => {
@@ -113,6 +114,18 @@ describe('PropertiesPanel', () => {
       render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={true} onToggleBgExport={onToggleBgExport} />)
       await userEvent.click(screen.getByRole('checkbox'))
       expect(onToggleBgExport).toHaveBeenCalled()
+    })
+  })
+
+  describe('다중 선택', () => {
+    it('shows multi-select info when multiCount > 0', () => {
+      render(<PropertiesPanel {...baseProps} multiCount={3} />)
+      expect(screen.getByText(/3개 요소 선택됨/)).toBeInTheDocument()
+    })
+
+    it('does not show multi-select info when multiCount is 0', () => {
+      render(<PropertiesPanel {...baseProps} />)
+      expect(screen.queryByText(/개 요소 선택됨/)).not.toBeInTheDocument()
     })
   })
 })

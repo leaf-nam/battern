@@ -196,4 +196,87 @@ describe('App — 줌 버튼', () => {
       expect(screen.getByText(`${z}×`)).toBeInTheDocument()
     })
   })
+
+  it('renders 전체축소 and 기본확대 buttons', () => {
+    renderApp()
+    expect(screen.getByText('전체축소')).toBeInTheDocument()
+    expect(screen.getByText('기본확대')).toBeInTheDocument()
+  })
+
+  it('기본확대 resets zoom to default', async () => {
+    renderApp()
+    await userEvent.click(screen.getByText('6×'))
+    expect(screen.getByText(/6px\/mm/)).toBeInTheDocument()
+    await userEvent.click(screen.getByText('기본확대'))
+    expect(screen.getByText(/3px\/mm/)).toBeInTheDocument()
+  })
+})
+
+describe('App — 영역 선택 (marquee)', () => {
+  it('creates marquee rect on select tool drag', () => {
+    renderApp()
+    act(() => { toolBtn('선택 / 편집').click() })
+
+    const svg = getSvg()
+    Object.defineProperty(svg, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 400 * 3, height: 300 * 3 }),
+      configurable: true,
+    })
+
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 30, clientY: 30, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 200, bubbles: true }))
+    })
+
+    const rects = svg.querySelectorAll('rect')
+    const marquee = Array.from(rects).find(
+      (r) => r.getAttribute('stroke') === '#e3b23c'
+    )
+    expect(marquee).toBeTruthy()
+  })
+
+  it('clicking empty space in select mode deselects on mouseup (tiny marquee)', () => {
+    renderApp()
+    act(() => { toolBtn('선택 / 편집').click() })
+
+    const svg = getSvg()
+    Object.defineProperty(svg, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 400 * 3, height: 300 * 3 }),
+      configurable: true,
+    })
+
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    expect(screen.getByText(/0개 요소/)).toBeInTheDocument()
+  })
+})
+
+describe('App — 다중 선택 삭제', () => {
+  it('delete button is enabled when shape is selected', async () => {
+    renderApp()
+    const svg = getSvg()
+    Object.defineProperty(svg, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, width: 400 * 3, height: 300 * 3 }),
+      configurable: true,
+    })
+
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 30, clientY: 30, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 30, bubbles: true }))
+    })
+    act(() => {
+      svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    expect(screen.getByTitle('선택한 요소 삭제')).not.toBeDisabled()
+  })
 })

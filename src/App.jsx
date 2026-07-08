@@ -17,6 +17,7 @@ export default function App() {
 
   const [shapes, setShapes] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
   const [tool, setTool] = useState('line')
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [panelTab, setPanelTab] = useState('properties')
@@ -26,6 +27,8 @@ export default function App() {
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null)
   const [snapTarget, setSnapTarget] = useState(null)
+
+  const [marquee, setMarquee] = useState(null)
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -96,11 +99,16 @@ export default function App() {
     [zoom, sheet.w, sheet.h],
   )
 
-  /* ---------------- drawing new shapes ---------------- */
+  /* ---------------- drawing / marquee / handle drag ---------------- */
 
   function handleSheetMouseDown(e) {
-    if (tool === 'select') return
     let { x, y } = clientToMm(e.clientX, e.clientY)
+
+    if (tool === 'select') {
+      setMarquee({ x1: x, y1: y, x2: x, y2: y })
+      return
+    }
+
     const snap = findSnapTarget(shapes, null, x, y)
     if (snap) ({ x, y } = snap)
     dragStartRef.current = { x, y }
@@ -111,6 +119,11 @@ export default function App() {
   function handleSheetMouseMove(e) {
     let { x, y } = clientToMm(e.clientX, e.clientY)
     setCursorMm({ x, y })
+
+    if (marquee) {
+      setMarquee((m) => ({ ...m, x2: x, y2: y }))
+      return
+    }
 
     if (draft && dragStartRef.current) {
       const snap = findSnapTarget(shapes, null, x, y)
@@ -132,6 +145,40 @@ export default function App() {
   }
 
   function handleSheetMouseUp() {
+    if (marquee) {
+      const { x1, y1, x2, y2 } = marquee
+      const w = Math.abs(x2 - x1)
+      const h = Math.abs(y2 - y1)
+      if (w < MIN_DRAG_MM && h < MIN_DRAG_MM) {
+        setSelectedIds([])
+        setSelectedId(null)
+      } else {
+        const left = Math.min(x1, x2)
+        const right = Math.max(x1, x2)
+        const top = Math.min(y1, y2)
+        const bottom = Math.max(y1, y2)
+        const ids = shapes
+          .filter((s) => {
+            const xs = [s.x1, s.x2]
+            const ys = [s.y1, s.y2]
+            if (s.type === 'curve') {
+              xs.push(s.c1x, s.c2x)
+              ys.push(s.c1y, s.c2y)
+            }
+            const sL = Math.min(...xs)
+            const sR = Math.max(...xs)
+            const sT = Math.min(...ys)
+            const sB = Math.max(...ys)
+            return sL < right && sR > left && sT < bottom && sB > top
+          })
+          .map((s) => s.id)
+        setSelectedIds(ids)
+        setSelectedId(ids.length > 0 ? ids[0] : null)
+      }
+      setMarquee(null)
+      return
+    }
+
     if (draft && dragStartRef.current) {
       const { x1, y1, x2, y2 } = draft
       const len = dist(x1, y1, x2, y2)
@@ -190,8 +237,28 @@ export default function App() {
 
   function deleteShape(id) {
     saveForUndo()
-    setShapes((prev) => prev.filter((s) => s.id !== id))
-    if (selectedId === id) setSelectedId(null)
+    if (selectedIds.length > 1 && selectedIds.includes(id)) {
+      const idsToRemove = new Set(selectedIds)
+      setShapes((prev) => prev.filter((s) => !idsToRemove.has(s.id)))
+      setSelectedId(null)
+      setSelectedIds([])
+    } else {
+      setShapes((prev) => prev.filter((s) => s.id !== id))
+      if (selectedId === id) setSelectedId(null)
+      setSelectedIds([])
+    }
+  }
+
+  function deleteSelectedShapes() {
+    if (selectedIds.length > 0) {
+      saveForUndo()
+      const idsToRemove = new Set(selectedIds)
+      setShapes((prev) => prev.filter((s) => !idsToRemove.has(s.id)))
+      setSelectedId(null)
+      setSelectedIds([])
+    } else if (selectedId) {
+      deleteShape(selectedId)
+    }
   }
 
   useEffect(() => {
@@ -203,14 +270,49 @@ export default function App() {
         undo()
         return
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) {
         e.preventDefault()
-        deleteShape(selectedId)
+        deleteSelectedShapes()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId])
+  }, [selectedId, selectedIds])
+
+  /* ---------------- zoom ---------------- */
+
+  function zoomToFit() {
+    if (shapes.length === 0) {
+      setZoom(DEFAULT_ZOOM)
+      return
+    }
+    let minX = sheet.w, minY = sheet.h, maxX = 0, maxY = 0
+    shapes.forEach((s) => {
+      const xs = [s.x1, s.x2]
+      const ys = [s.y1, s.y2]
+      if (s.type === 'curve') {
+        xs.push(s.c1x, s.c2x)
+        ys.push(s.c1y, s.c2y)
+      }
+      for (const v of xs) { if (v < minX) minX = v; if (v > maxX) maxX = v }
+      for (const v of ys) { if (v < minY) minY = v; if (v > maxY) maxY = v }
+    })
+    const contentW = maxX - minX + 20
+    const contentH = maxY - minY + 20
+    const fitW = sheet.w / contentW
+    const fitH = sheet.h / contentH
+    const fit = Math.min(fitW, fitH)
+    const nearest = ZOOM_STEPS.reduce((prev, curr) =>
+      Math.abs(curr - fit) < Math.abs(prev - fit) ? curr : prev
+    )
+    setZoom(Math.max(1, nearest))
+  }
+
+  function zoomReset() {
+    setZoom(DEFAULT_ZOOM)
+  }
+
+  /* ---------------- computed ---------------- */
 
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
   const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
@@ -224,6 +326,7 @@ export default function App() {
     setShapes([])
     setBackgroundImage(null)
     setSelectedId(null)
+    setSelectedIds([])
   }
 
   function handleExportSvg() {
@@ -289,6 +392,7 @@ export default function App() {
     setBackgroundImage(entry.backgroundImage ?? null)
     setIncludeBgExport(true)
     setSelectedId(null)
+    setSelectedIds([])
     setPanelTab('properties')
   }
 
@@ -324,6 +428,8 @@ export default function App() {
   ]
 
   /* ---------------- render ---------------- */
+
+  const selSet = new Set(selectedIds)
 
   return (
     <div className="app">
@@ -399,8 +505,8 @@ export default function App() {
 
           <button
             className="tool-btn"
-            onClick={() => selectedId && deleteShape(selectedId)}
-            disabled={!selectedId}
+            onClick={deleteSelectedShapes}
+            disabled={!selectedId && selectedIds.length === 0}
             title="선택한 요소 삭제"
           >
             {ICONS.trash}
@@ -427,7 +533,7 @@ export default function App() {
               onMouseDown={handleSheetMouseDown}
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
-              onMouseLeave={() => setCursorMm(null)}
+              onMouseLeave={() => { setCursorMm(null); setMarquee(null) }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -444,8 +550,9 @@ export default function App() {
               ))}
 
               {shapes.map((s) => {
-                const isSelected = s.id === selectedId
-                const stroke = isSelected ? '#c1443c' : INK
+                const isActive = s.id === selectedId
+                const isMultiSel = !isActive && selSet.has(s.id)
+                const stroke = isActive ? '#c1443c' : isMultiSel ? '#4a9eff' : INK
                 return (
                   <g
                     key={s.id}
@@ -453,6 +560,7 @@ export default function App() {
                       if (tool !== 'select') return
                       e.stopPropagation()
                       setSelectedId(s.id)
+                      if (!selSet.has(s.id)) setSelectedIds([])
                       setPanelTab('properties')
                     }}
                     style={{ cursor: tool === 'select' ? 'pointer' : 'crosshair' }}
@@ -480,14 +588,14 @@ export default function App() {
                       </>
                     )}
 
-                    {isSelected && s.type === 'curve' && (
+                    {isActive && s.type === 'curve' && (
                       <>
                         <line x1={s.x1} y1={s.y1} x2={s.c1x} y2={s.c1y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                         <line x1={s.x2} y1={s.y2} x2={s.c2x} y2={s.c2y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                       </>
                     )}
 
-                    {isSelected && (
+                    {isActive && (
                       <>
                         <Handle x={s.x1} y={s.y1} onDown={() => { saveForUndo(); setDragging({ handle: 'p1' }) }} />
                         <Handle x={s.x2} y={s.y2} onDown={() => { saveForUndo(); setDragging({ handle: 'p2' }) }} />
@@ -511,6 +619,19 @@ export default function App() {
                 )
               )}
 
+              {marquee && (
+                <rect
+                  x={Math.min(marquee.x1, marquee.x2)}
+                  y={Math.min(marquee.y1, marquee.y2)}
+                  width={Math.abs(marquee.x2 - marquee.x1)}
+                  height={Math.abs(marquee.y2 - marquee.y1)}
+                  fill="rgba(227, 178, 60, 0.08)"
+                  stroke="#e3b23c"
+                  strokeWidth={0.5}
+                  strokeDasharray="2 1.5"
+                />
+              )}
+
               {closureStatus.openPoints.map((p, i) => (
                 <circle key={`open${i}`} className="open-point-marker" cx={p.x} cy={p.y} r={3.4} fill="none" stroke="#c1443c" strokeWidth={0.8} />
               ))}
@@ -532,7 +653,9 @@ export default function App() {
               확대: <strong>{zoom}px/mm</strong>
             </span>
             <span>
-              {closureStatus.closed ? (
+              {selectedIds.length > 1 ? (
+                <strong style={{ color: '#4a9eff' }}>{selectedIds.length}개 선택됨</strong>
+              ) : closureStatus.closed ? (
                 <strong style={{ color: '#8fbf6c' }}>폐곡선 완성 ✓</strong>
               ) : shapes.length ? (
                 <strong style={{ color: '#c1443c' }}>열린 점 {closureStatus.openPoints.length}개 — 이어서 그려야 저장 가능</strong>
@@ -542,6 +665,12 @@ export default function App() {
             </span>
             <div style={{ flex: 1 }} />
             <div className="field-row" style={{ gap: 4 }}>
+              <button className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={zoomToFit} title="전체 축소">
+                전체축소
+              </button>
+              <button className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={zoomReset} title="기본 확대">
+                기본확대
+              </button>
               {ZOOM_STEPS.map((z) => (
                 <button key={z} className="btn btn-ghost" style={{ padding: '3px 8px' }} onClick={() => setZoom(z)}>
                   {z}×
@@ -572,6 +701,7 @@ export default function App() {
                 shapes={shapes}
                 selectedShape={selectedShape}
                 selectedId={selectedId}
+                multiCount={selectedIds.length > 1 ? selectedIds.length : 0}
                 onSelect={(id) => setSelectedId(id)}
                 onDelete={deleteShape}
                 onLengthChange={setLineLengthCm}

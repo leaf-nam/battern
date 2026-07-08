@@ -1,9 +1,14 @@
 import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
-export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, onSelect, onDelete, onLengthChange, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
+export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, onSelect, onDelete, onLengthChange, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
   return (
     <>
+      {multiCount > 0 && (
+        <div className="field" style={{ padding: '10px 12px', borderRadius: 3, border: '1px solid var(--charcoal-3)', background: 'var(--charcoal-2)', fontSize: 12, lineHeight: 1.6, marginBottom: 16 }}>
+          <strong style={{ color: '#4a9eff' }}>{multiCount}개 요소 선택됨</strong> — Delete 키로 일괄 삭제할 수 있습니다.
+        </div>
+      )}
       <p className="panel-section-title">저장 조건</p>
       <div
         className="field"

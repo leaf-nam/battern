@@ -31,8 +31,29 @@ export default function App() {
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [saveName, setSaveName] = useState('')
 
+  const [backgroundImage, setBackgroundImage] = useState(null)
+  const [includeBgExport, setIncludeBgExport] = useState(true)
+  const fileInputRef = useRef(null)
+
   const svgRef = useRef(null)
   const historyRef = useRef([])
+
+  function handleBackgroundUpload() {
+    fileInputRef.current?.click()
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => setBackgroundImage(ev.target.result)
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function removeBackground() {
+    setBackgroundImage(null)
+  }
 
   function saveForUndo() {
     historyRef.current.push(shapes)
@@ -201,17 +222,20 @@ export default function App() {
     if (shapes.length && !window.confirm('현재 캔버스를 비웁니다. 저장하지 않은 작업은 사라집니다. 계속할까요?')) return
     saveForUndo()
     setShapes([])
+    setBackgroundImage(null)
     setSelectedId(null)
   }
 
   function handleExportSvg() {
     if (!canSave) return
-    const svg = buildSvgString(shapes, sheet.w, sheet.h)
+    const bg = includeBgExport ? backgroundImage : null
+    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg)
     downloadBlob(`furboaee-pattern-${Date.now()}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
   }
 
   function handleExportPng() {
-    const svg = buildSvgString(shapes, sheet.w, sheet.h)
+    const bg = includeBgExport ? backgroundImage : null
+    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg)
     const blob = new Blob([svg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
     const img = new Image()
@@ -243,13 +267,15 @@ export default function App() {
   function confirmSave() {
     if (!canSave) return
     const name = saveName.trim() || '이름 없는 패턴'
+    const exportBg = includeBgExport ? backgroundImage : null
     const entry = {
       id: uid(),
       name,
       createdAt: Date.now(),
       sheetKey,
       shapes,
-      svg: buildSvgString(shapes, sheet.w, sheet.h),
+      backgroundImage,
+      svg: buildSvgString(shapes, sheet.w, sheet.h, exportBg),
     }
     persist([entry, ...savedPatterns])
     setShowSaveModal(false)
@@ -260,6 +286,8 @@ export default function App() {
     saveForUndo()
     setSheetKey(entry.sheetKey && SHEET_PRESETS[entry.sheetKey] ? entry.sheetKey : 'block')
     setShapes(entry.shapes.map((s) => ({ ...s })))
+    setBackgroundImage(entry.backgroundImage ?? null)
+    setIncludeBgExport(true)
     setSelectedId(null)
     setPanelTab('properties')
   }
@@ -339,6 +367,13 @@ export default function App() {
             보관함에 저장
           </button>
         </div>
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
       </header>
 
       <div className="app-body">
@@ -395,6 +430,9 @@ export default function App() {
               onMouseLeave={() => setCursorMm(null)}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
+              {backgroundImage && (
+                <image x={0} y={0} width={sheet.w} height={sheet.h} preserveAspectRatio="xMidYMid slice" href={backgroundImage} opacity={0.6} />
+              )}
               {gridLines}
 
               {cornerTicks.map(([cx, cy], i) => (
@@ -538,6 +576,11 @@ export default function App() {
                 onDelete={deleteShape}
                 onLengthChange={setLineLengthCm}
                 closureStatus={closureStatus}
+                backgroundImage={backgroundImage}
+                onBackgroundUpload={handleBackgroundUpload}
+                onBackgroundRemove={removeBackground}
+                includeBgExport={includeBgExport}
+                onToggleBgExport={() => setIncludeBgExport((v) => !v)}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

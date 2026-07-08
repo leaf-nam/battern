@@ -30,4 +30,18 @@ describe('buildSvgString', () => {
     expect(svg).toContain('<path')
     expect(svg).toContain('C ')
   })
+
+  it('includes background image when provided', () => {
+    const shapes = []
+    const svg = buildSvgString(shapes, 400, 300, 'data:image/png;base64,abc123')
+    expect(svg).toContain('<image')
+    expect(svg).toContain('href="data:image/png;base64,abc123"')
+    expect(svg).toContain('preserveAspectRatio="xMidYMid slice"')
+  })
+
+  it('does not include image element when no background', () => {
+    const shapes = []
+    const svg = buildSvgString(shapes, 400, 300)
+    expect(svg).not.toContain('<image')
+  })
 })

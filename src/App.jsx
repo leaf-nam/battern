@@ -32,6 +32,17 @@ export default function App() {
   const [saveName, setSaveName] = useState('')
 
   const svgRef = useRef(null)
+  const historyRef = useRef([])
+
+  function saveForUndo() {
+    historyRef.current.push(shapes)
+    if (historyRef.current.length > 50) historyRef.current.shift()
+  }
+
+  function undo() {
+    if (historyRef.current.length === 0) return
+    setShapes(historyRef.current.pop())
+  }
 
   /* ---------------- persistence ---------------- */
 
@@ -111,6 +122,7 @@ export default function App() {
         } else {
           newShape = { id, type: 'line', x1, y1, x2, y2 }
         }
+        saveForUndo()
         setShapes((prev) => [...prev, newShape])
         setSelectedId(id)
         setPanelTab('properties')
@@ -139,6 +151,7 @@ export default function App() {
   }
 
   function setLineLengthCm(id, newLenCm) {
+    saveForUndo()
     setShapes((prev) =>
       prev.map((s) => {
         if (s.id !== id || s.type !== 'line') return s
@@ -155,6 +168,7 @@ export default function App() {
   }
 
   function deleteShape(id) {
+    saveForUndo()
     setShapes((prev) => prev.filter((s) => s.id !== id))
     if (selectedId === id) setSelectedId(null)
   }
@@ -163,6 +177,11 @@ export default function App() {
     function onKeyDown(e) {
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        undo()
+        return
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault()
         deleteShape(selectedId)
@@ -180,6 +199,7 @@ export default function App() {
 
   function handleNewPattern() {
     if (shapes.length && !window.confirm('현재 캔버스를 비웁니다. 저장하지 않은 작업은 사라집니다. 계속할까요?')) return
+    saveForUndo()
     setShapes([])
     setSelectedId(null)
   }
@@ -237,6 +257,7 @@ export default function App() {
 
   function loadPattern(entry) {
     if (shapes.length && !window.confirm('현재 캔버스의 작업을 덮어씁니다. 계속할까요?')) return
+    saveForUndo()
     setSheetKey(entry.sheetKey && SHEET_PRESETS[entry.sheetKey] ? entry.sheetKey : 'block')
     setShapes(entry.shapes.map((s) => ({ ...s })))
     setSelectedId(null)
@@ -430,12 +451,12 @@ export default function App() {
 
                     {isSelected && (
                       <>
-                        <Handle x={s.x1} y={s.y1} onDown={() => setDragging({ handle: 'p1' })} />
-                        <Handle x={s.x2} y={s.y2} onDown={() => setDragging({ handle: 'p2' })} />
+                        <Handle x={s.x1} y={s.y1} onDown={() => { saveForUndo(); setDragging({ handle: 'p1' }) }} />
+                        <Handle x={s.x2} y={s.y2} onDown={() => { saveForUndo(); setDragging({ handle: 'p2' }) }} />
                         {s.type === 'curve' && (
                           <>
-                            <Handle x={s.c1x} y={s.c1y} gold onDown={() => setDragging({ handle: 'c1' })} />
-                            <Handle x={s.c2x} y={s.c2y} gold onDown={() => setDragging({ handle: 'c2' })} />
+                            <Handle x={s.c1x} y={s.c1y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c1' }) }} />
+                            <Handle x={s.c2x} y={s.c2y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c2' }) }} />
                           </>
                         )}
                       </>

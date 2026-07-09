@@ -28,9 +28,9 @@ describe('App — 기본 렌더링', () => {
   it('renders header, toolbar, canvas, and side panel', () => {
     renderApp()
     expect(screen.getByText('Furboaee Draft')).toBeInTheDocument()
-    expect(toolBtn('직선 그리기')).toBeInTheDocument()
-    expect(toolBtn('곡선 그리기')).toBeInTheDocument()
-    expect(toolBtn('선택 / 편집')).toBeInTheDocument()
+    expect(toolBtn('직선 그리기 (L)')).toBeInTheDocument()
+    expect(toolBtn('곡선 그리기 (C)')).toBeInTheDocument()
+    expect(toolBtn('선택 / 편집 (V)')).toBeInTheDocument()
     expect(screen.getByText('속성')).toBeInTheDocument()
     expect(screen.getByText('보관함')).toBeInTheDocument()
   })
@@ -51,21 +51,21 @@ describe('App — 기본 렌더링', () => {
 describe('App — 도구 선택', () => {
   it('starts with line tool selected', () => {
     renderApp()
-    const btn = toolBtn('직선 그리기')
+    const btn = toolBtn('직선 그리기 (L)')
     expect(btn.classList.contains('active')).toBe(true)
   })
 
   it('switches to curve tool on click', async () => {
     renderApp()
-    await userEvent.click(toolBtn('곡선 그리기'))
-    expect(toolBtn('곡선 그리기').classList.contains('active')).toBe(true)
-    expect(toolBtn('직선 그리기').classList.contains('active')).toBe(false)
+    await userEvent.click(toolBtn('곡선 그리기 (C)'))
+    expect(toolBtn('곡선 그리기 (C)').classList.contains('active')).toBe(true)
+    expect(toolBtn('직선 그리기 (L)').classList.contains('active')).toBe(false)
   })
 
   it('switches to select tool on click', async () => {
     renderApp()
-    await userEvent.click(toolBtn('선택 / 편집'))
-    expect(toolBtn('선택 / 편집').classList.contains('active')).toBe(true)
+    await userEvent.click(toolBtn('선택 / 편집 (V)'))
+    expect(toolBtn('선택 / 편집 (V)').classList.contains('active')).toBe(true)
   })
 })
 
@@ -215,7 +215,7 @@ describe('App — 줌 버튼', () => {
 describe('App — 영역 선택 (marquee)', () => {
   it('creates marquee rect on select tool drag', () => {
     renderApp()
-    act(() => { toolBtn('선택 / 편집').click() })
+    act(() => { toolBtn('선택 / 편집 (V)').click() })
 
     const svg = getSvg()
     Object.defineProperty(svg, 'getBoundingClientRect', {
@@ -239,7 +239,7 @@ describe('App — 영역 선택 (marquee)', () => {
 
   it('clicking empty space in select mode deselects on mouseup (tiny marquee)', () => {
     renderApp()
-    act(() => { toolBtn('선택 / 편집').click() })
+    act(() => { toolBtn('선택 / 편집 (V)').click() })
 
     const svg = getSvg()
     Object.defineProperty(svg, 'getBoundingClientRect', {
@@ -297,7 +297,7 @@ describe('App — 선택 이동', () => {
     const svg = getSvg()
     drawOneLine(svg)
 
-    await userEvent.click(toolBtn('선택 / 편집'))
+    await userEvent.click(toolBtn('선택 / 편집 (V)'))
 
     const shapeGroup = document.querySelector('[data-testid="shape"]')
     const lineEl = shapeGroup.querySelector('line')
@@ -332,7 +332,7 @@ describe('App — 선택 이동', () => {
     act(() => { svg.dispatchEvent(new MouseEvent('mousemove', { clientX: 120, clientY: 60, bubbles: true })) })
     act(() => { svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })) })
 
-    await userEvent.click(toolBtn('선택 / 편집'))
+    await userEvent.click(toolBtn('선택 / 편집 (V)'))
 
     act(() => {
       svg.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 10, bubbles: true }))

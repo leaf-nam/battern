@@ -221,10 +221,22 @@ export default function App() {
     }
 
     if (draft && dragStartRef.current) {
-      const snap = findSnapTarget(shapes, null, x, y)
-      if (snap) ({ x, y } = snap)
+      let targetX = x, targetY = y
+      if (e.shiftKey) {
+        const dx = x - dragStartRef.current.x
+        const dy = y - dragStartRef.current.y
+        const len = Math.hypot(dx, dy)
+        if (len > 0) {
+          const angle = Math.atan2(dy, dx)
+          const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+          targetX = dragStartRef.current.x + len * Math.cos(snapped)
+          targetY = dragStartRef.current.y + len * Math.sin(snapped)
+        }
+      }
+      const snap = findSnapTarget(shapes, null, targetX, targetY)
+      if (snap) ({ x: targetX, y: targetY } = snap)
       setSnapTarget(snap)
-      setDraft((d) => ({ ...d, x2: x, y2: y }))
+      setDraft((d) => ({ ...d, x2: targetX, y2: targetY }))
       return
     }
     if (dragging && selectedId) {

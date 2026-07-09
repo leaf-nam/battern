@@ -687,10 +687,10 @@ export default function App() {
             className="tool-btn"
             onClick={deleteSelectedShapes}
             disabled={!selectedId && selectedIds.length === 0}
-            title="선택한 요소 삭제"
+            title="선택한 요소 삭제 (Delete)"
           >
             {ICONS.trash}
-            삭제
+            삭제 <span className="tool-key">Del</span>
           </button>
 
           <div className="toolbar-divider" />

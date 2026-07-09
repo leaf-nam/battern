@@ -2,6 +2,12 @@ import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
 export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport, transparentBgExport, onToggleTransparentBg }) {
+  const resizeW = selectionBounds ? (selectionBounds.w / 10).toFixed(1) : ''
+  const resizeH = selectionBounds ? (selectionBounds.h / 10).toFixed(1) : ''
+  const lineLen = selectedShape?.type === 'line'
+    ? (Math.hypot(selectedShape.x2 - selectedShape.x1, selectedShape.y2 - selectedShape.y1) / 10).toFixed(2)
+    : ''
+
   return (
     <>
       {multiCount > 0 && (
@@ -16,15 +22,18 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
             <div className="field" style={{ flex: 1 }}>
               <label>폭 (cm)</label>
               <input
+                key={'w-' + (selectionBounds ? `${selectionBounds.x}-${selectionBounds.y}-${selectionBounds.w}-${selectionBounds.h}` : 'none')}
                 type="number"
                 step="0.1"
                 min="0.1"
-                value={(selectionBounds.w / 10).toFixed(1)}
-                onChange={(e) => {
+                defaultValue={resizeW}
+                onBlur={(e) => {
                   const v = parseFloat(e.target.value)
-                  if (v > 0 && onResizeBounds) {
-                    const origH = selectionBounds.h
-                    onResizeBounds(v * 10, origH)
+                  if (v > 0) onResizeBounds(v * 10, selectionBounds.h)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.target.blur()
                   }
                 }}
               />
@@ -32,15 +41,18 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
             <div className="field" style={{ flex: 1 }}>
               <label>높이 (cm)</label>
               <input
+                key={'h-' + (selectionBounds ? `${selectionBounds.x}-${selectionBounds.y}-${selectionBounds.w}-${selectionBounds.h}` : 'none')}
                 type="number"
                 step="0.1"
                 min="0.1"
-                value={(selectionBounds.h / 10).toFixed(1)}
-                onChange={(e) => {
+                defaultValue={resizeH}
+                onBlur={(e) => {
                   const v = parseFloat(e.target.value)
-                  if (v > 0 && onResizeBounds) {
-                    const origW = selectionBounds.w
-                    onResizeBounds(origW, v * 10)
+                  if (v > 0) onResizeBounds(selectionBounds.w, v * 10)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.target.blur()
                   }
                 }}
               />
@@ -177,11 +189,18 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
           <div className="field">
             <label>길이 (cm)</label>
             <input
+              key={'len-' + (selectedShape?.id ?? 'none')}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0.1"
-              value={(Math.hypot(selectedShape.x2 - selectedShape.x1, selectedShape.y2 - selectedShape.y1) / 10).toFixed(1)}
-              onChange={(e) => onLengthChange(selectedShape.id, parseFloat(e.target.value) || 0)}
+              defaultValue={lineLen}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value)
+                if (v > 0 && selectedShape) onLengthChange(selectedShape.id, v)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.target.blur()
+              }}
             />
           </div>
           <button className="btn btn-danger" onClick={() => onDelete(selectedShape.id)}>

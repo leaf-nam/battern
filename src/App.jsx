@@ -614,6 +614,9 @@ export default function App() {
     [sheet.w - 10, sheet.h - 10],
   ]
 
+  const cx = sheet.w / 2
+  const cy = sheet.h / 2
+
   /* ---------------- render ---------------- */
 
   const selSet = new Set(selectedIds)
@@ -740,6 +743,8 @@ export default function App() {
                   <circle cx={cx} cy={cy} r={2.4} fill="none" />
                 </g>
               ))}
+              <line className="centerline" x1={0} y1={cy} x2={sheet.w} y2={cy} />
+              <line className="centerline" x1={cx} y1={0} x2={cx} y2={sheet.h} />
 
               {shapes.map((s) => {
                 const isActive = selectedIds.length === 0 && s.id === selectedId

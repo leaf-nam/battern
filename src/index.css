@@ -280,6 +280,13 @@ button {
   stroke-width: 1;
 }
 
+.centerline {
+  stroke: var(--gold-dim);
+  stroke-width: 0.5;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
 .status-bar {
   display: flex;
   align-items: center;

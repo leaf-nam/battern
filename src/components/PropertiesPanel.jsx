@@ -1,7 +1,7 @@
 import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
-export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport }) {
+export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport, transparentBgExport, onToggleTransparentBg }) {
   return (
     <>
       {multiCount > 0 && (
@@ -144,6 +144,26 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
         <p className="empty-hint" style={{ marginTop: backgroundImage ? 0 : 6, marginBottom: 0, fontSize: 11 }}>
           선택한 이미지가 캔버스 배경으로 표시됩니다. SVG/PNG 내보내기에 포함됩니다.
         </p>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 12,
+            color: 'var(--muted)',
+            cursor: 'pointer',
+            marginTop: 4,
+            marginBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={transparentBgExport}
+            onChange={onToggleTransparentBg}
+            style={{ accentColor: 'var(--gold)' }}
+          />
+          투명 배경 (PNG)
+        </label>
       </div>
 
       <p className="panel-section-title" style={{ marginTop: 20 }}>

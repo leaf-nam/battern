@@ -96,13 +96,13 @@ describe('PropertiesPanel', () => {
     it('shows "내보내기에 포함" checkbox when background is set', () => {
       render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={true} onToggleBgExport={() => {}} />)
       expect(screen.getByText('내보내기에 포함')).toBeInTheDocument()
-      const checkbox = screen.getByRole('checkbox')
+      const checkbox = screen.getByLabelText('내보내기에 포함')
       expect(checkbox).toBeChecked()
     })
 
     it('checkbox is unchecked when includeBgExport is false', () => {
       render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={false} onToggleBgExport={() => {}} />)
-      const checkbox = screen.getByRole('checkbox')
+      const checkbox = screen.getByLabelText('내보내기에 포함')
       expect(checkbox).not.toBeChecked()
     })
 
@@ -114,7 +114,7 @@ describe('PropertiesPanel', () => {
     it('calls onToggleBgExport when checkbox is clicked', async () => {
       const onToggleBgExport = vi.fn()
       render(<PropertiesPanel {...baseProps} backgroundImage="data:image/png;base64,abc" includeBgExport={true} onToggleBgExport={onToggleBgExport} />)
-      await userEvent.click(screen.getByRole('checkbox'))
+      await userEvent.click(screen.getByLabelText('내보내기에 포함'))
       expect(onToggleBgExport).toHaveBeenCalled()
     })
   })

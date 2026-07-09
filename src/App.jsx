@@ -38,6 +38,7 @@ export default function App() {
 
   const [backgroundImage, setBackgroundImage] = useState(null)
   const [includeBgExport, setIncludeBgExport] = useState(true)
+  const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
 
   const svgRef = useRef(null)
@@ -506,7 +507,7 @@ export default function App() {
 
   function handleExportPng() {
     const bg = includeBgExport ? backgroundImage : null
-    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg)
+    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg, transparentBgExport)
     const blob = new Blob([svg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
     const img = new Image()
@@ -516,8 +517,10 @@ export default function App() {
       canvas.width = Math.round(sheet.w * PX_PER_MM)
       canvas.height = Math.round(sheet.h * PX_PER_MM)
       const ctx = canvas.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      if (!transparentBgExport) {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
       URL.revokeObjectURL(url)
       canvas.toBlob((pngBlob) => downloadBlob(`furboaee-pattern-${Date.now()}.png`, pngBlob), 'image/png')
@@ -951,6 +954,8 @@ export default function App() {
                 onBackgroundRemove={removeBackground}
                 includeBgExport={includeBgExport}
                 onToggleBgExport={() => setIncludeBgExport((v) => !v)}
+                transparentBgExport={transparentBgExport}
+                onToggleTransparentBg={() => setTransparentBgExport((v) => !v)}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

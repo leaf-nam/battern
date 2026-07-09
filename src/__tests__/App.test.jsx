@@ -277,7 +277,7 @@ describe('App — 다중 선택 삭제', () => {
       svg.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     })
 
-    expect(screen.getByTitle('선택한 요소 삭제')).not.toBeDisabled()
+    expect(screen.getByTitle('선택한 요소 삭제 (Delete)')).not.toBeDisabled()
   })
 })
 

@@ -390,7 +390,11 @@ export default function App() {
       if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) {
         e.preventDefault()
         deleteSelectedShapes()
+        return
       }
+      if (e.code === 'KeyV') { setTool('select'); return }
+      if (e.code === 'KeyL') { setTool('line'); return }
+      if (e.code === 'KeyC') { setTool('curve'); return }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -663,18 +667,18 @@ export default function App() {
           <button
             className={`tool-btn ${tool === 'select' ? 'active' : ''}`}
             onClick={() => setTool('select')}
-            title="선택 / 편집"
+            title="선택 / 편집 (V)"
           >
             {ICONS.select}
-            선택
+            선택 <span className="tool-key">V</span>
           </button>
-          <button className={`tool-btn ${tool === 'line' ? 'active' : ''}`} onClick={() => setTool('line')} title="직선 그리기">
+          <button className={`tool-btn ${tool === 'line' ? 'active' : ''}`} onClick={() => setTool('line')} title="직선 그리기 (L)">
             {ICONS.line}
-            직선
+            직선 <span className="tool-key">L</span>
           </button>
-          <button className={`tool-btn ${tool === 'curve' ? 'active' : ''}`} onClick={() => setTool('curve')} title="곡선 그리기">
+          <button className={`tool-btn ${tool === 'curve' ? 'active' : ''}`} onClick={() => setTool('curve')} title="곡선 그리기 (C)">
             {ICONS.curve}
-            곡선
+            곡선 <span className="tool-key">C</span>
           </button>
 
           <div className="toolbar-divider" />

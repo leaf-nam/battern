@@ -41,7 +41,7 @@ describe('PropertiesPanel', () => {
     const line = { id: 'l1', type: 'line', x1: 0, y1: 0, x2: 100, y2: 0 }
     render(<PropertiesPanel {...baseProps} selectedShape={line} selectedId="l1" shapes={[line]} />)
     expect(screen.getByText('길이 (cm)')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('10.0')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('10.00')).toBeInTheDocument()
   })
 
   it('shows curve length for a selected curve', () => {

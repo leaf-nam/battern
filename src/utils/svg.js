@@ -27,6 +27,9 @@ export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
   const tilesY = Math.ceil(hMm / TILE_H)
 
   const allShapesEl = shapes.map(shapeToSvgEl).join('\n          ')
+  const bgImgEl = backgroundImage
+    ? `\n          <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}" opacity="0.6"/>`
+    : ''
 
   let pagesHtml = ''
   let pageNum = 0
@@ -37,39 +40,33 @@ export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
       pageNum++
       const vx = tx * TILE_W
       const vy = ty * TILE_H
-      const tw = Math.min(TILE_W, wMm - vx)
-      const th = Math.min(TILE_H, hMm - vy)
 
-      let bgEl = ''
-      if (backgroundImage) {
-        bgEl = `\n            <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}" opacity="0.6"/>`
-      }
-
-      const cx = vx + tw / 2
-      const cy = vy + th / 2
+      const cx = vx + TILE_W / 2
+      const cy = vy + TILE_H / 2
 
       const marks = [
         '<g stroke="#999" stroke-width="0.3">',
         `<line x1="${cx - 3}" y1="${vy}" x2="${cx + 3}" y2="${vy}"/>`,
         `<line x1="${cx}" y1="${vy}" x2="${cx}" y2="${vy + 3}"/>`,
-        `<line x1="${cx - 3}" y1="${vy + th}" x2="${cx + 3}" y2="${vy + th}"/>`,
-        `<line x1="${cx}" y1="${vy + th - 3}" x2="${cx}" y2="${vy + th}"/>`,
+        `<line x1="${cx - 3}" y1="${vy + TILE_H}" x2="${cx + 3}" y2="${vy + TILE_H}"/>`,
+        `<line x1="${cx}" y1="${vy + TILE_H - 3}" x2="${cx}" y2="${vy + TILE_H}"/>`,
         `<line x1="${vx}" y1="${cy - 3}" x2="${vx}" y2="${cy + 3}"/>`,
         `<line x1="${vx}" y1="${cy}" x2="${vx + 3}" y2="${cy}"/>`,
-        `<line x1="${vx + tw}" y1="${cy - 3}" x2="${vx + tw}" y2="${cy + 3}"/>`,
-        `<line x1="${vx + tw - 3}" y1="${cy}" x2="${vx + tw}" y2="${cy}"/>`,
+        `<line x1="${vx + TILE_W}" y1="${cy - 3}" x2="${vx + TILE_W}" y2="${cy + 3}"/>`,
+        `<line x1="${vx + TILE_W - 3}" y1="${cy}" x2="${vx + TILE_W}" y2="${cy}"/>`,
         '</g>',
       ]
-      const marksEl = marks.join('\n            ')
+      const marksEl = marks.join('\n          ')
 
       pagesHtml += `
       <div class="page">
-        <svg xmlns="http://www.w3.org/2000/svg" overflow="hidden" viewBox="${vx} ${vy} ${tw} ${th}" width="${tw}mm" height="${th}mm">
-          <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>${bgEl}
+        <svg xmlns="http://www.w3.org/2000/svg" overflow="hidden" viewBox="${vx} ${vy} ${TILE_W} ${TILE_H}" width="${TILE_W}mm" height="${TILE_H}mm">
+          <rect x="${vx}" y="${vy}" width="${TILE_W}" height="${TILE_H}" fill="#ffffff"/>
+          ${bgImgEl}
           ${allShapesEl}
-          <rect x="${vx}" y="${vy}" width="${tw}" height="${th}" fill="none" stroke="#ccc" stroke-width="0.2" stroke-dasharray="2 2"/>
+          <rect x="${vx}" y="${vy}" width="${TILE_W}" height="${TILE_H}" fill="none" stroke="#ccc" stroke-width="0.2" stroke-dasharray="2 2"/>
           ${marksEl}
-          <text x="${vx + tw - 3}" y="${vy + th - 3}" font-family="sans-serif" font-size="3" fill="#999" text-anchor="end">${pageNum} / ${totalPages}</text>
+          <text x="${vx + TILE_W - 3}" y="${vy + TILE_H - 3}" font-family="sans-serif" font-size="3" fill="#999" text-anchor="end">${pageNum} / ${totalPages}</text>
         </svg>
       </div>`
     }

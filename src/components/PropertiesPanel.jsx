@@ -26,6 +26,10 @@ export default function PropertiesPanel({
   onToggleBgExport,
   transparentBgExport,
   onToggleTransparentBg,
+  seamEnabled,
+  onToggleSeam,
+  seamWidth,
+  onSeamWidthChange,
 }) {
   const resizeW = selectionBounds ? (selectionBounds.w / 10).toFixed(1) : "";
   const resizeH = selectionBounds ? (selectionBounds.h / 10).toFixed(1) : "";
@@ -421,8 +425,34 @@ export default function PropertiesPanel({
         </>
       )}
 
+      <p className="panel-section-title" style={{ marginTop: 20 }}>시접</p>
+      <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={seamEnabled}
+            onChange={onToggleSeam}
+            style={{ accentColor: 'var(--gold)' }}
+          />
+          시접 자동 생성
+        </label>
+      </div>
+      {seamEnabled && (
+        <div className="field">
+          <label>시접 너비 (mm)</label>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            step="1"
+            value={seamWidth}
+            onChange={(e) => onSeamWidthChange(Math.max(1, Math.min(100, parseInt(e.target.value) || 10)))}
+          />
+        </div>
+      )}
+
       <div className="roadmap-note">
-        <strong>다음 버전 예정:</strong> 시접 자동 생성, 태블릿 펜 압력 인식,
+        <strong>다음 버전 예정:</strong> 태블릿 펜 압력 인식,
         패턴 사진 AI 분석, 버전 관리
       </div>
     </>

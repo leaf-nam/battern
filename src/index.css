@@ -287,6 +287,14 @@ button {
   stroke-width: 1;
 }
 
+.seam-allowance {
+  fill: none;
+  stroke: #d4a017;
+  stroke-width: 0.5;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
+}
+
 .centerline {
   stroke: var(--gold-dim);
   stroke-width: 0.5;

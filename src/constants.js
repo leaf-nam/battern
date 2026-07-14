@@ -17,3 +17,4 @@ export const SNAP_MM = 6
 export const STORAGE_KEY = 'furboaee_patterns_v1'
 export const INK = '#241f18'
 export const STROKE_MM = 0.7
+export const DEFAULT_SEAM_MM = 10

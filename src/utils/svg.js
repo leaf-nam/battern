@@ -39,42 +39,37 @@ export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
       const vy = ty * TILE_H
       const tw = Math.min(TILE_W, wMm - vx)
       const th = Math.min(TILE_H, hMm - vy)
-      const clipId = `clip-${tx}-${ty}`
 
       let bgEl = ''
       if (backgroundImage) {
         bgEl = `\n            <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}" opacity="0.6"/>`
       }
 
+      const cx = vx + tw / 2
+      const cy = vy + th / 2
+
       const marks = [
         '<g stroke="#999" stroke-width="0.3">',
-        `<line x1="${tw / 2 - 3}" y1="0" x2="${tw / 2 + 3}" y2="0"/>`,
-        `<line x1="${tw / 2}" y1="0" x2="${tw / 2}" y2="3"/>`,
-        `<line x1="${tw / 2 - 3}" y1="${th}" x2="${tw / 2 + 3}" y2="${th}"/>`,
-        `<line x1="${tw / 2}" y1="${th - 3}" x2="${tw / 2}" y2="${th}"/>`,
-        `<line x1="0" y1="${th / 2 - 3}" x2="0" y2="${th / 2 + 3}"/>`,
-        `<line x1="0" y1="${th / 2}" x2="3" y2="${th / 2}"/>`,
-        `<line x1="${tw}" y1="${th / 2 - 3}" x2="${tw}" y2="${th / 2 + 3}"/>`,
-        `<line x1="${tw - 3}" y1="${th / 2}" x2="${tw}" y2="${th / 2}"/>`,
+        `<line x1="${cx - 3}" y1="${vy}" x2="${cx + 3}" y2="${vy}"/>`,
+        `<line x1="${cx}" y1="${vy}" x2="${cx}" y2="${vy + 3}"/>`,
+        `<line x1="${cx - 3}" y1="${vy + th}" x2="${cx + 3}" y2="${vy + th}"/>`,
+        `<line x1="${cx}" y1="${vy + th - 3}" x2="${cx}" y2="${vy + th}"/>`,
+        `<line x1="${vx}" y1="${cy - 3}" x2="${vx}" y2="${cy + 3}"/>`,
+        `<line x1="${vx}" y1="${cy}" x2="${vx + 3}" y2="${cy}"/>`,
+        `<line x1="${vx + tw}" y1="${cy - 3}" x2="${vx + tw}" y2="${cy + 3}"/>`,
+        `<line x1="${vx + tw - 3}" y1="${cy}" x2="${vx + tw}" y2="${cy}"/>`,
         '</g>',
       ]
       const marksEl = marks.join('\n            ')
 
       pagesHtml += `
       <div class="page">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${tw} ${th}" width="${tw}mm" height="${th}mm">
-          <defs>
-            <clipPath id="${clipId}">
-              <rect x="0" y="0" width="${tw}" height="${th}"/>
-            </clipPath>
-          </defs>
-          <g clip-path="url(#${clipId})">
-            <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>${bgEl}
-            ${allShapesEl}
-          </g>
-          <rect x="0" y="0" width="${tw}" height="${th}" fill="none" stroke="#ccc" stroke-width="0.2" stroke-dasharray="2 2"/>
+        <svg xmlns="http://www.w3.org/2000/svg" overflow="hidden" viewBox="${vx} ${vy} ${tw} ${th}" width="${tw}mm" height="${th}mm">
+          <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>${bgEl}
+          ${allShapesEl}
+          <rect x="${vx}" y="${vy}" width="${tw}" height="${th}" fill="none" stroke="#ccc" stroke-width="0.2" stroke-dasharray="2 2"/>
           ${marksEl}
-          <text x="${tw - 3}" y="${th - 3}" font-family="sans-serif" font-size="3" fill="#999" text-anchor="end">${pageNum} / ${totalPages}</text>
+          <text x="${vx + tw - 3}" y="${vy + th - 3}" font-family="sans-serif" font-size="3" fill="#999" text-anchor="end">${pageNum} / ${totalPages}</text>
         </svg>
       </div>`
     }

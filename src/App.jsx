@@ -45,6 +45,22 @@ export default function App() {
   const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
 
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const menuBtnRef = useRef(null)
+  const dropRef = useRef(null)
+
+  useEffect(() => {
+    function onPointerDown(e) {
+      if (!mobileMenuOpen) return
+      if (dropRef.current && !dropRef.current.contains(e.target) && menuBtnRef.current && !menuBtnRef.current.contains(e.target)) {
+        setMobileMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [mobileMenuOpen])
+
   const svgRef = useRef(null)
   const historyRef = useRef([])
 
@@ -92,6 +108,11 @@ export default function App() {
   }
 
   /* ---------------- coordinate helpers ---------------- */
+
+  function touchEvent(e) {
+    const t = e.touches?.[0] ?? e.changedTouches?.[0]
+    return t ? { clientX: t.clientX, clientY: t.clientY } : { clientX: 0, clientY: 0 }
+  }
 
   const clientToMm = useCallback(
     (clientX, clientY) => {
@@ -662,7 +683,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header className="app-header" style={{ position: 'relative' }}>
         <div className="brand">
           <BrandMark />
           <div className="brand-text">
@@ -705,6 +726,31 @@ export default function App() {
             보관함에 저장
           </button>
         </div>
+        <button ref={menuBtnRef} className="mobile-menu-btn" onClick={() => setMobileMenuOpen((v) => !v)}>
+          ≡
+        </button>
+        {mobileMenuOpen && (
+          <div ref={dropRef} className="mobile-menu-dropdown">
+            <button className="btn" onClick={() => { handleNewPattern(); setMobileMenuOpen(false) }}>
+              새 패턴
+            </button>
+            <button className="btn" onClick={() => { handleExportSvg(); setMobileMenuOpen(false) }} disabled={!canSave}>
+              SVG 저장
+            </button>
+            <button className="btn" onClick={() => { handleExportPng(); setMobileMenuOpen(false) }} disabled={!shapes.length}>
+              PNG 내보내기
+            </button>
+            <button className="btn" onClick={() => { handlePrint(); setMobileMenuOpen(false) }} disabled={!shapes.length}>
+              인쇄 (1:1)
+            </button>
+            <button className="btn" onClick={() => { handleTiledPrint(); setMobileMenuOpen(false) }} disabled={!shapes.length || (sheet.w <= 210 && sheet.h <= 297)}>
+              분할 인쇄
+            </button>
+            <button className="btn" style={{ color: 'var(--gold)' }} onClick={() => { openSaveModal(); setMobileMenuOpen(false) }} disabled={!canSave}>
+              보관함에 저장
+            </button>
+          </div>
+        )}
         <input
           type="file"
           accept="image/*"
@@ -754,6 +800,10 @@ export default function App() {
         </nav>
 
         <div className="canvas-area">
+          {mobilePanelOpen && <div className="side-panel-backdrop" onClick={() => setMobilePanelOpen(false)} />}
+          <button className="panel-fab" onClick={() => setMobilePanelOpen((v) => !v)}>
+            {mobilePanelOpen ? '✕' : '⚙'}
+          </button>
           <div className="canvas-scroll">
             <svg
               ref={svgRef}
@@ -766,6 +816,9 @@ export default function App() {
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
               onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null; resizeRef.current = null; setSnapTarget(null) }}
+              onTouchStart={(e) => { e.preventDefault(); const t = touchEvent(e); handleSheetMouseDown({ ...e, clientX: t.clientX, clientY: t.clientY }) }}
+              onTouchMove={(e) => { e.preventDefault(); const t = touchEvent(e); handleSheetMouseMove({ ...e, clientX: t.clientX, clientY: t.clientY }) }}
+              onTouchEnd={(e) => { const t = touchEvent(e); handleSheetMouseUp({ ...e, clientX: t.clientX, clientY: t.clientY }) }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -974,7 +1027,7 @@ export default function App() {
           </div>
         </div>
 
-        <aside className="side-panel">
+        <aside className={`side-panel${mobilePanelOpen ? ' open' : ''}`}>
           <div className="panel-tabs">
             <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
               속성

@@ -45,8 +45,33 @@ export default function App() {
   const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
 
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [statusTooltip, setStatusTooltip] = useState(null)
+  const menuBtnRef = useRef(null)
+  const dropRef = useRef(null)
+
+  useEffect(() => {
+    function onPointerDown(e) {
+      if (!mobileMenuOpen) return
+      if (dropRef.current && !dropRef.current.contains(e.target) && menuBtnRef.current && !menuBtnRef.current.contains(e.target)) {
+        setMobileMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [mobileMenuOpen])
+
+  useEffect(() => {
+    if (!statusTooltip) return
+    function onPointerDown() { setStatusTooltip(null) }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [statusTooltip])
+
   const svgRef = useRef(null)
   const historyRef = useRef([])
+  const panRef = useRef({ active: false })
 
   function handleBackgroundUpload() {
     fileInputRef.current?.click()
@@ -92,6 +117,39 @@ export default function App() {
   }
 
   /* ---------------- coordinate helpers ---------------- */
+
+  function touchEvent(e) {
+    const t = e.touches?.[0] ?? e.changedTouches?.[0]
+    return t ? { clientX: t.clientX, clientY: t.clientY } : { clientX: 0, clientY: 0 }
+  }
+
+  function handleShapeDown(e, s, selSet) {
+    if (tool !== 'select') return
+    const isTouch = !!e.touches
+    const pt = isTouch ? touchEvent(e) : e
+    if (isTouch) e.preventDefault()
+    e.stopPropagation()
+
+    if (selectedIds.length > 0) {
+      if (selSet.has(s.id)) {
+        const { x, y } = clientToMm(pt.clientX, pt.clientY)
+        saveForUndo()
+        moveRef.current = { prevX: x, prevY: y, ids: new Set(selSet) }
+      } else {
+        setSelectedIds((prev) => [...prev, s.id])
+      }
+      return
+    }
+    if (s.id === selectedId) {
+      const { x, y } = clientToMm(pt.clientX, pt.clientY)
+      saveForUndo()
+      moveRef.current = { prevX: x, prevY: y, ids: new Set([s.id]) }
+    } else {
+      setSelectedId(s.id)
+      setSelectedIds([])
+      setPanelTab('properties')
+    }
+  }
 
   const clientToMm = useCallback(
     (clientX, clientY) => {
@@ -432,10 +490,8 @@ export default function App() {
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
   }
 
-  function handleResizeStart(e, handle) {
-    e.stopPropagation()
-    e.preventDefault()
-    const { x, y } = clientToMm(e.clientX, e.clientY)
+  function handleResizeStart(clientX, clientY, handle) {
+    const { x, y } = clientToMm(clientX, clientY)
     const ids = selectedIds.length > 0 ? new Set(selectedIds) : new Set([selectedId])
     if (ids.size === 0) return
     const box = computeBounds(ids)
@@ -654,6 +710,13 @@ export default function App() {
   /* ---------------- render ---------------- */
 
   const selSet = new Set(selectedIds)
+  const statusText = selectedIds.length > 1
+    ? `${selectedIds.length}개 선택됨`
+    : closureStatus.closed
+      ? '폐곡선 완성 ✓'
+      : shapes.length
+        ? `열린 점 ${closureStatus.openPoints.length}개 — 이어서 그려야 저장 가능`
+        : '폐곡선을 그리면 저장할 수 있습니다'
   const selectionBounds = useMemo(() => {
     const idList = selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : [])
     if (idList.length === 0) return null
@@ -662,9 +725,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header className="app-header" style={{ position: 'relative' }}>
         <div className="brand">
-          <BrandMark />
+          <BrandMark onClick={() => setMobilePanelOpen(false)} style={{ cursor: 'pointer' }} />
           <div className="brand-text">
             <h1>Furboaee Draft</h1>
             <p>PATTERN STUDIO · SINCE 1985</p>
@@ -705,6 +768,31 @@ export default function App() {
             보관함에 저장
           </button>
         </div>
+        <button ref={menuBtnRef} className="mobile-menu-btn" onClick={() => setMobileMenuOpen((v) => !v)}>
+          ≡
+        </button>
+        {mobileMenuOpen && (
+          <div ref={dropRef} className="mobile-menu-dropdown">
+            <button className="btn" onClick={() => { handleNewPattern(); setMobileMenuOpen(false) }}>
+              새 패턴
+            </button>
+            <button className="btn" onClick={() => { handleExportSvg(); setMobileMenuOpen(false) }} disabled={!canSave}>
+              SVG 저장
+            </button>
+            <button className="btn" onClick={() => { handleExportPng(); setMobileMenuOpen(false) }} disabled={!shapes.length}>
+              PNG 내보내기
+            </button>
+            <button className="btn" onClick={() => { handlePrint(); setMobileMenuOpen(false) }} disabled={!shapes.length}>
+              인쇄 (1:1)
+            </button>
+            <button className="btn" onClick={() => { handleTiledPrint(); setMobileMenuOpen(false) }} disabled={!shapes.length || (sheet.w <= 210 && sheet.h <= 297)}>
+              분할 인쇄
+            </button>
+            <button className="btn" style={{ color: 'var(--gold)' }} onClick={() => { openSaveModal(); setMobileMenuOpen(false) }} disabled={!canSave}>
+              보관함에 저장
+            </button>
+          </div>
+        )}
         <input
           type="file"
           accept="image/*"
@@ -754,6 +842,10 @@ export default function App() {
         </nav>
 
         <div className="canvas-area">
+          {mobilePanelOpen && <div className="side-panel-backdrop" onClick={() => setMobilePanelOpen(false)} />}
+          <button className="panel-fab" onClick={() => setMobilePanelOpen((v) => !v)}>
+            {mobilePanelOpen ? '✕' : '⚙'}
+          </button>
           <div className="canvas-scroll">
             <svg
               ref={svgRef}
@@ -766,6 +858,52 @@ export default function App() {
               onMouseMove={handleSheetMouseMove}
               onMouseUp={handleSheetMouseUp}
               onMouseLeave={() => { setCursorMm(null); setMarquee(null); moveRef.current = null; resizeRef.current = null; setSnapTarget(null) }}
+              onTouchStart={(e) => {
+                if (e.touches.length >= 2) {
+                  e.preventDefault()
+                  const s = e.currentTarget.parentElement
+                  const t1 = e.touches[0], t2 = e.touches[1]
+                  panRef.current = {
+                    active: true,
+                    startScrollX: s.scrollLeft,
+                    startScrollY: s.scrollTop,
+                    startX: (t1.clientX + t2.clientX) / 2,
+                    startY: (t1.clientY + t2.clientY) / 2,
+                  }
+                  return
+                }
+                if (panRef.current.active) return
+                e.preventDefault()
+                const t = touchEvent(e)
+                handleSheetMouseDown({ ...e, clientX: t.clientX, clientY: t.clientY })
+              }}
+              onTouchMove={(e) => {
+                if (panRef.current.active) {
+                  if (e.touches.length >= 2) {
+                    const t1 = e.touches[0], t2 = e.touches[1]
+                    const cx = (t1.clientX + t2.clientX) / 2
+                    const cy = (t1.clientY + t2.clientY) / 2
+                    const s = e.currentTarget.parentElement
+                    s.scrollLeft = panRef.current.startScrollX - (cx - panRef.current.startX)
+                    s.scrollTop = panRef.current.startScrollY - (cy - panRef.current.startY)
+                  }
+                  e.preventDefault()
+                  return
+                }
+                e.preventDefault()
+                const t = touchEvent(e)
+                handleSheetMouseMove({ ...e, clientX: t.clientX, clientY: t.clientY })
+              }}
+              onTouchEnd={(e) => {
+                if (panRef.current.active) {
+                  if (e.touches.length === 0) panRef.current.active = false
+                  if (e.changedTouches.length > 0) e.preventDefault()
+                  return
+                }
+                const t = touchEvent(e)
+                handleSheetMouseUp({ ...e, clientX: t.clientX, clientY: t.clientY })
+              }}
+              onTouchCancel={() => { panRef.current.active = false }}
             >
               <rect x={0} y={0} width={sheet.w} height={sheet.h} fill="var(--paper)" />
               {backgroundImage && (
@@ -791,29 +929,8 @@ export default function App() {
                   <g
                     key={s.id}
                     data-testid="shape"
-                    onMouseDown={(e) => {
-                      if (tool !== 'select') return
-                      e.stopPropagation()
-                      if (selectedIds.length > 0) {
-                        if (selSet.has(s.id)) {
-                          const { x, y } = clientToMm(e.clientX, e.clientY)
-                          saveForUndo()
-                          moveRef.current = { prevX: x, prevY: y, ids: new Set(selSet) }
-                        } else {
-                          setSelectedIds((prev) => [...prev, s.id])
-                        }
-                        return
-                      }
-                      if (s.id === selectedId) {
-                        const { x, y } = clientToMm(e.clientX, e.clientY)
-                        saveForUndo()
-                        moveRef.current = { prevX: x, prevY: y, ids: new Set([s.id]) }
-                      } else {
-                        setSelectedId(s.id)
-                        setSelectedIds([])
-                        setPanelTab('properties')
-                      }
-                    }}
+                    onMouseDown={(e) => handleShapeDown(e, s, selSet)}
+                    onTouchStart={(e) => handleShapeDown(e, s, selSet)}
                     style={{ cursor: tool === 'select' ? 'pointer' : 'crosshair' }}
                   >
                     {s.type === 'line' ? (
@@ -906,7 +1023,8 @@ export default function App() {
                         stroke="#4a9eff"
                         strokeWidth={0.5}
                         style={{ cursor: cursors[h] }}
-                        onMouseDown={(e) => handleResizeStart(e, h)}
+                        onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e.clientX, e.clientY, h) }}
+                        onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); const t = e.touches[0]; handleResizeStart(t.clientX, t.clientY, h) }}
                       />
                     )
                   })}
@@ -946,7 +1064,7 @@ export default function App() {
             <span>
               확대: <strong>{zoom}px/mm</strong>
             </span>
-            <span>
+            <span onClick={() => setStatusTooltip(statusTooltip === statusText ? null : statusText)} style={{ cursor: 'pointer' }}>
               {selectedIds.length > 1 ? (
                 <strong style={{ color: '#4a9eff' }}>{selectedIds.length}개 선택됨</strong>
               ) : closureStatus.closed ? (
@@ -974,13 +1092,16 @@ export default function App() {
           </div>
         </div>
 
-        <aside className="side-panel">
+        <aside className={`side-panel${mobilePanelOpen ? ' open' : ''}`}>
           <div className="panel-tabs">
             <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
               속성
             </button>
             <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
               보관함
+            </button>
+            <button className="panel-tab panel-tab-close" onClick={() => setMobilePanelOpen(false)}>
+              ✕
             </button>
           </div>
 
@@ -1026,6 +1147,12 @@ export default function App() {
           </div>
         </aside>
       </div>
+
+      {statusTooltip && (
+        <div className="status-tooltip" onClick={(e) => { e.stopPropagation(); setStatusTooltip(null) }}>
+          {statusTooltip}
+        </div>
+      )}
 
       {showSaveModal && (
         <SaveModal

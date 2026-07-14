@@ -350,6 +350,10 @@ button {
   border-bottom-color: var(--gold);
 }
 
+.panel-tab-close {
+  display: none;
+}
+
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -765,6 +769,15 @@ button {
 
   .side-panel.open {
     transform: translateX(0);
+  }
+
+  .panel-tab-close {
+    display: block;
+    width: 44px;
+    flex: none;
+    font-size: 16px;
+    color: var(--paper);
+    border-left: 1px solid var(--charcoal-3);
   }
 
   .side-panel-backdrop {

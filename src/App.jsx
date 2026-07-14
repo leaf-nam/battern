@@ -1035,6 +1035,9 @@ export default function App() {
             <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
               보관함
             </button>
+            <button className="panel-tab panel-tab-close" onClick={() => setMobilePanelOpen(false)}>
+              ✕
+            </button>
           </div>
 
           <div className="panel-body">

@@ -536,6 +536,9 @@ button {
 /* ---------- Print ---------- */
 
 @media print {
+  @page {
+    margin: 0;
+  }
   body * {
     visibility: hidden;
   }
@@ -548,6 +551,8 @@ button {
     top: 0;
     left: 0;
     box-shadow: none;
+    width: calc(var(--sheet-w-mm) * 1mm);
+    height: calc(var(--sheet-h-mm) * 1mm);
   }
 }
 

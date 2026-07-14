@@ -7,19 +7,20 @@ function shapeToSvgEl(s) {
   return `<path d="M ${s.x1.toFixed(2)},${s.y1.toFixed(2)} C ${s.c1x.toFixed(2)},${s.c1y.toFixed(2)} ${s.c2x.toFixed(2)},${s.c2y.toFixed(2)} ${s.x2.toFixed(2)},${s.y2.toFixed(2)}" fill="none" stroke="${INK}" stroke-width="${STROKE_MM}" stroke-linecap="round"/>`
 }
 
-export function buildSvgString(shapes, wMm, hMm, backgroundImage, transparentBg) {
+export function buildSvgString(shapes, wMm, hMm, backgroundImage, transparentBg, seamPath) {
   const extra = []
   if (backgroundImage) {
     extra.push(`  <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}"/>`)
   }
   const body = shapes.map(shapeToSvgEl).join('\n  ')
   const bgRect = transparentBg ? '' : `  <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="#ffffff"/>\n`
+  const seamEl = seamPath ? `\n  <path d="${seamPath}" fill="none" stroke="#d4a017" stroke-width="0.5" stroke-dasharray="3 2"/>` : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wMm} ${hMm}" width="${(wMm / 10).toFixed(2)}cm" height="${(hMm / 10).toFixed(2)}cm">
-${bgRect}${extra.join('\n')}  ${body}
+${bgRect}${extra.join('\n')}  ${body}${seamEl}
 </svg>`
 }
 
-export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
+export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage, seamPath) {
   const TILE_W = 210
   const TILE_H = 297
 
@@ -27,6 +28,7 @@ export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
   const tilesY = Math.ceil(hMm / TILE_H)
 
   const allShapesEl = shapes.map(shapeToSvgEl).join('\n          ')
+  const seamEl = seamPath ? `\n          <path d="${seamPath}" fill="none" stroke="#d4a017" stroke-width="0.5" stroke-dasharray="3 2"/>` : ''
   const bgImgEl = backgroundImage
     ? `\n          <image x="0" y="0" width="${wMm}" height="${hMm}" preserveAspectRatio="xMidYMid slice" href="${backgroundImage}" opacity="0.6"/>`
     : ''
@@ -63,7 +65,7 @@ export function buildTiledPrintHtml(shapes, wMm, hMm, backgroundImage) {
         <svg xmlns="http://www.w3.org/2000/svg" overflow="hidden" viewBox="${vx} ${vy} ${TILE_W} ${TILE_H}" width="${TILE_W}mm" height="${TILE_H}mm">
           <rect x="${vx}" y="${vy}" width="${TILE_W}" height="${TILE_H}" fill="#ffffff"/>
           ${bgImgEl}
-          ${allShapesEl}
+          ${allShapesEl}${seamEl}
           <rect x="${vx}" y="${vy}" width="${TILE_W}" height="${TILE_H}" fill="none" stroke="#ccc" stroke-width="0.2" stroke-dasharray="2 2"/>
           ${marksEl}
           <text x="${vx + TILE_W - 3}" y="${vy + TILE_H - 3}" font-family="sans-serif" font-size="3" fill="#999" text-anchor="end">${pageNum} / ${totalPages}</text>

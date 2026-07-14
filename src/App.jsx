@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM } from './constants.js'
+import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
+import { computeSeamPath } from './utils/seam.js'
 import { uid } from './utils/uid.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
@@ -41,6 +42,8 @@ export default function App() {
   const [saveName, setSaveName] = useState('')
 
   const [backgroundImage, setBackgroundImage] = useState(null)
+  const [seamEnabled, setSeamEnabled] = useState(false)
+  const [seamWidth, setSeamWidth] = useState(DEFAULT_SEAM_MM)
   const [includeBgExport, setIncludeBgExport] = useState(true)
   const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
@@ -562,6 +565,10 @@ export default function App() {
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
   const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
   const canSave = shapes.length > 0 && closureStatus.closed
+  const seamPath = useMemo(() => {
+    if (!seamEnabled || !closureStatus.closed || seamWidth <= 0) return null
+    return computeSeamPath(shapes, seamWidth)
+  }, [shapes, seamEnabled, seamWidth, closureStatus.closed])
 
   /* ---------------- file actions ---------------- */
 
@@ -577,13 +584,13 @@ export default function App() {
   function handleExportSvg() {
     if (!canSave) return
     const bg = includeBgExport ? backgroundImage : null
-    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg)
+    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg, false, seamPath)
     downloadBlob(`furboaee-pattern-${Date.now()}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
   }
 
   function handleExportPng() {
     const bg = includeBgExport ? backgroundImage : null
-    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg, transparentBgExport)
+    const svg = buildSvgString(shapes, sheet.w, sheet.h, bg, transparentBgExport, seamPath)
     const blob = new Blob([svg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
     const img = new Image()
@@ -617,7 +624,7 @@ export default function App() {
 
   function handleTiledPrint() {
     const bg = includeBgExport ? backgroundImage : null
-    const html = buildTiledPrintHtml(shapes, sheet.w, sheet.h, bg)
+    const html = buildTiledPrintHtml(shapes, sheet.w, sheet.h, bg, seamPath)
     const win = window.open('', '_blank')
     if (!win) {
       alert('팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.')
@@ -647,7 +654,7 @@ export default function App() {
       ...(sheetKey === 'custom' ? { customW, customH } : {}),
       shapes,
       backgroundImage,
-      svg: buildSvgString(shapes, sheet.w, sheet.h, exportBg),
+      svg: buildSvgString(shapes, sheet.w, sheet.h, exportBg, false, seamPath),
     }
     persist([entry, ...savedPatterns])
     setShowSaveModal(false)
@@ -835,7 +842,12 @@ export default function App() {
 
           <div className="toolbar-divider" />
 
-          <button className="tool-btn" disabled title="시접 자동 생성 — 다음 버전 예정">
+          <button
+            className={`tool-btn ${seamEnabled && closureStatus.closed ? 'active' : ''}`}
+            onClick={() => setSeamEnabled((v) => !v)}
+            disabled={!closureStatus.closed}
+            title={closureStatus.closed ? '시접 자동 생성' : '폐곡선을 완성해야 시접을 생성할 수 있습니다'}
+          >
             {ICONS.seam}
             시접
           </button>
@@ -1044,6 +1056,10 @@ export default function App() {
                 />
               )}
 
+              {seamPath && (
+                <path className="seam-allowance" d={seamPath} />
+              )}
+
               {closureStatus.openPoints.map((p, i) => (
                 <circle key={`open${i}`} className="open-point-marker" cx={p.x} cy={p.y} r={3.4} fill="none" stroke="#c1443c" strokeWidth={0.8} />
               ))}
@@ -1140,6 +1156,10 @@ export default function App() {
                 onToggleBgExport={() => setIncludeBgExport((v) => !v)}
                 transparentBgExport={transparentBgExport}
                 onToggleTransparentBg={() => setTransparentBgExport((v) => !v)}
+                seamEnabled={seamEnabled}
+                onToggleSeam={() => setSeamEnabled((v) => !v)}
+                seamWidth={seamWidth}
+                onSeamWidthChange={setSeamWidth}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

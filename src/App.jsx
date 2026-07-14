@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM } from './constants.js'
+import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
-import { buildSvgString, downloadBlob } from './utils/svg.js'
+import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { uid } from './utils/uid.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
@@ -13,7 +13,11 @@ import SaveModal from './components/SaveModal.jsx'
 
 export default function App() {
   const [sheetKey, setSheetKey] = useState('block')
-  const sheet = SHEET_PRESETS[sheetKey]
+  const [customW, setCustomW] = useState(800)
+  const [customH, setCustomH] = useState(1000)
+  const sheet = sheetKey === 'custom'
+    ? { label: `사용자 설정 (${customW}×${customH}mm)`, w: customW, h: customH }
+    : SHEET_PRESETS[sheetKey]
 
   const [shapes, setShapes] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -544,8 +548,29 @@ export default function App() {
     img.src = url
   }
 
+  function handleCustomSheetChange(wMm, hMm) {
+    const w = Math.round(Math.min(Math.max(wMm, MIN_SHEET_MM), MAX_SHEET_MM))
+    const h = Math.round(Math.min(Math.max(hMm, MIN_SHEET_MM), MAX_SHEET_MM))
+    setCustomW(w)
+    setCustomH(h)
+  }
+
   function handlePrint() {
     window.print()
+  }
+
+  function handleTiledPrint() {
+    const bg = includeBgExport ? backgroundImage : null
+    const html = buildTiledPrintHtml(shapes, sheet.w, sheet.h, bg)
+    const win = window.open('', '_blank')
+    if (!win) {
+      alert('팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.')
+      return
+    }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 500)
   }
 
   function openSaveModal() {
@@ -563,6 +588,7 @@ export default function App() {
       name,
       createdAt: Date.now(),
       sheetKey,
+      ...(sheetKey === 'custom' ? { customW, customH } : {}),
       shapes,
       backgroundImage,
       svg: buildSvgString(shapes, sheet.w, sheet.h, exportBg),
@@ -574,7 +600,15 @@ export default function App() {
   function loadPattern(entry) {
     if (shapes.length && !window.confirm('현재 캔버스의 작업을 덮어씁니다. 계속할까요?')) return
     saveForUndo()
-    setSheetKey(entry.sheetKey && SHEET_PRESETS[entry.sheetKey] ? entry.sheetKey : 'block')
+    if (entry.sheetKey === 'custom' && entry.customW && entry.customH) {
+      setSheetKey('custom')
+      setCustomW(entry.customW)
+      setCustomH(entry.customH)
+    } else if (entry.sheetKey && SHEET_PRESETS[entry.sheetKey]) {
+      setSheetKey(entry.sheetKey)
+    } else {
+      setSheetKey('block')
+    }
     setShapes(entry.shapes.map((s) => ({ ...s })))
     setBackgroundImage(entry.backgroundImage ?? null)
     setIncludeBgExport(true)
@@ -658,6 +692,9 @@ export default function App() {
           </button>
           <button className="btn" onClick={handlePrint} disabled={!shapes.length}>
             인쇄 (1:1)
+          </button>
+          <button className="btn" onClick={handleTiledPrint} disabled={!shapes.length || (sheet.w <= 210 && sheet.h <= 297)}>
+            분할 인쇄
           </button>
           <button
             className="btn btn-gold"
@@ -955,6 +992,11 @@ export default function App() {
                   if (shapes.length && !window.confirm('용지 크기를 바꾸면 화면 배치가 달라질 수 있습니다. 계속할까요?')) return
                   setSheetKey(k)
                 }}
+                customW={customW}
+                customH={customH}
+                onCustomSheetChange={handleCustomSheetChange}
+                minSheetMm={MIN_SHEET_MM}
+                maxSheetMm={MAX_SHEET_MM}
                 shapes={shapes}
                 selectedShape={selectedShape}
                 selectedId={selectedId}

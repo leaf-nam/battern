@@ -1,7 +1,7 @@
 import { SHEET_PRESETS } from '../constants.js'
 import { curveLengthMm } from '../utils/geometry.js'
 
-export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport, transparentBgExport, onToggleTransparentBg }) {
+export default function PropertiesPanel({ sheetKey, onSheetChange, customW, customH, onCustomSheetChange, minSheetMm, maxSheetMm, shapes, selectedShape, selectedId, multiCount, selectionBounds, onSelect, onDelete, onLengthChange, onResizeBounds, closureStatus, backgroundImage, onBackgroundUpload, onBackgroundRemove, includeBgExport, onToggleBgExport, transparentBgExport, onToggleTransparentBg }) {
   const resizeW = selectionBounds ? (selectionBounds.w / 10).toFixed(1) : ''
   const resizeH = selectionBounds ? (selectionBounds.h / 10).toFixed(1) : ''
   const lineLen = selectedShape?.type === 'line'
@@ -104,8 +104,54 @@ export default function PropertiesPanel({ sheetKey, onSheetChange, shapes, selec
               {v.label}
             </option>
           ))}
+          <option value="custom">사용자 설정</option>
         </select>
       </div>
+      {sheetKey === 'custom' && (
+        <div className="field-row" style={{ gap: 6, marginTop: 6 }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>폭 (mm)</label>
+            <input
+              key={`cw-${customW}`}
+              type="number"
+              step="10"
+              min={minSheetMm}
+              max={maxSheetMm}
+              defaultValue={customW}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value)
+                if (v >= minSheetMm && v <= maxSheetMm) onCustomSheetChange(v, customH)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.target.blur()
+              }}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>높이 (mm)</label>
+            <input
+              key={`ch-${customH}`}
+              type="number"
+              step="10"
+              min={minSheetMm}
+              max={maxSheetMm}
+              defaultValue={customH}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value)
+                if (v >= minSheetMm && v <= maxSheetMm) onCustomSheetChange(customW, v)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.target.blur()
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {sheetKey === 'custom' && (
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, textAlign: 'right' }}>
+          {minSheetMm / 10}cm ~ {maxSheetMm / 100}m
+        </p>
+      )}
 
       <p className="panel-section-title" style={{ marginTop: 20 }}>배경 사진</p>
       <div className="field">

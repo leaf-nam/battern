@@ -350,6 +350,10 @@ button {
   border-bottom-color: var(--gold);
 }
 
+.panel-back-btn {
+  display: none;
+}
+
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -795,6 +799,20 @@ button {
 
   .panel-fab:hover {
     background: var(--gold-bright);
+  }
+
+  .panel-back-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    color: var(--gold);
+    font-family: var(--font-display);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
   }
 
   .panel-body {

@@ -326,8 +326,7 @@ button {
 
 .panel-tabs {
   display: flex;
-  border-bottom: 1px solid var(--charcoal-3);
-  flex-shrink: 0;
+  flex: 1;
 }
 
 .panel-tab {
@@ -350,7 +349,14 @@ button {
   border-bottom-color: var(--gold);
 }
 
-.panel-back-btn {
+.panel-header {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--charcoal-3);
+  flex-shrink: 0;
+}
+
+.panel-close {
   display: none;
 }
 
@@ -801,18 +807,18 @@ button {
     background: var(--gold-bright);
   }
 
-  .panel-back-btn {
+  .panel-close {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 12px 14px;
+    justify-content: center;
+    width: 44px;
+    flex-shrink: 0;
     background: transparent;
     border: none;
-    color: var(--gold);
-    font-family: var(--font-display);
-    font-size: 12px;
+    border-left: 1px solid var(--charcoal-3);
+    color: var(--paper);
+    font-size: 16px;
     cursor: pointer;
-    white-space: nowrap;
   }
 
   .panel-body {

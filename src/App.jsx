@@ -1028,15 +1028,17 @@ export default function App() {
         </div>
 
         <aside className={`side-panel${mobilePanelOpen ? ' open' : ''}`}>
-          <div className="panel-tabs">
-            <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
-              속성
-            </button>
-            <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
-              보관함
-            </button>
-            <button className="panel-back-btn" onClick={() => setMobilePanelOpen(false)}>
-              ← 뒤로
+          <div className="panel-header">
+            <div className="panel-tabs">
+              <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
+                속성
+              </button>
+              <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
+                보관함
+              </button>
+            </div>
+            <button className="panel-close" onClick={() => setMobilePanelOpen(false)}>
+              ✕
             </button>
           </div>
 

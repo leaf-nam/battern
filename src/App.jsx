@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
-import { buildSvgString, downloadBlob } from './utils/svg.js'
+import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { uid } from './utils/uid.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
@@ -548,6 +548,20 @@ export default function App() {
     window.print()
   }
 
+  function handleTiledPrint() {
+    const bg = includeBgExport ? backgroundImage : null
+    const html = buildTiledPrintHtml(shapes, sheet.w, sheet.h, bg)
+    const win = window.open('', '_blank')
+    if (!win) {
+      alert('팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.')
+      return
+    }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 500)
+  }
+
   function openSaveModal() {
     if (!canSave) return
     setSaveName(`패턴 ${new Date().toLocaleDateString('ko-KR')}`)
@@ -658,6 +672,9 @@ export default function App() {
           </button>
           <button className="btn" onClick={handlePrint} disabled={!shapes.length}>
             인쇄 (1:1)
+          </button>
+          <button className="btn" onClick={handleTiledPrint} disabled={!shapes.length || (sheet.w <= 210 && sheet.h <= 297)}>
+            분할 인쇄
           </button>
           <button
             className="btn btn-gold"

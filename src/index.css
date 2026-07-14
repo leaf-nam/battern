@@ -118,6 +118,13 @@ button {
   gap: 8px;
 }
 
+.mobile-menu-btn,
+.mobile-menu-dropdown,
+.panel-fab,
+.side-panel-backdrop {
+  display: none;
+}
+
 /* ---------- Buttons ---------- */
 
 .btn {

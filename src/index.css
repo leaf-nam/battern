@@ -758,9 +758,10 @@ button {
 
   .side-panel {
     position: fixed;
-    inset: 0;
+    top: 52px;
+    left: 0;
     width: 100%;
-    height: 100%;
+    height: calc(100% - 52px);
     z-index: 40;
     transform: translateX(100%);
     transition: transform 0.2s ease;

@@ -326,7 +326,8 @@ button {
 
 .panel-tabs {
   display: flex;
-  flex: 1;
+  border-bottom: 1px solid var(--charcoal-3);
+  flex-shrink: 0;
 }
 
 .panel-tab {
@@ -347,17 +348,6 @@ button {
 .panel-tab.active {
   color: var(--gold-bright);
   border-bottom-color: var(--gold);
-}
-
-.panel-header {
-  display: flex;
-  align-items: stretch;
-  border-bottom: 1px solid var(--charcoal-3);
-  flex-shrink: 0;
-}
-
-.panel-close {
-  display: none;
 }
 
 .panel-body {
@@ -805,20 +795,6 @@ button {
 
   .panel-fab:hover {
     background: var(--gold-bright);
-  }
-
-  .panel-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    flex-shrink: 0;
-    background: transparent;
-    border: none;
-    border-left: 1px solid var(--charcoal-3);
-    color: var(--paper);
-    font-size: 16px;
-    cursor: pointer;
   }
 
   .panel-body {

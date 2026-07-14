@@ -685,7 +685,7 @@ export default function App() {
     <div className="app">
       <header className="app-header" style={{ position: 'relative' }}>
         <div className="brand">
-          <BrandMark />
+          <BrandMark onClick={() => setMobilePanelOpen(false)} style={{ cursor: 'pointer' }} />
           <div className="brand-text">
             <h1>Furboaee Draft</h1>
             <p>PATTERN STUDIO · SINCE 1985</p>
@@ -1028,17 +1028,12 @@ export default function App() {
         </div>
 
         <aside className={`side-panel${mobilePanelOpen ? ' open' : ''}`}>
-          <div className="panel-header">
-            <div className="panel-tabs">
-              <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
-                속성
-              </button>
-              <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
-                보관함
-              </button>
-            </div>
-            <button className="panel-close" onClick={() => setMobilePanelOpen(false)}>
-              ✕
+          <div className="panel-tabs">
+            <button className={`panel-tab ${panelTab === 'properties' ? 'active' : ''}`} onClick={() => setPanelTab('properties')}>
+              속성
+            </button>
+            <button className={`panel-tab ${panelTab === 'library' ? 'active' : ''}`} onClick={() => setPanelTab('library')}>
+              보관함
             </button>
           </div>
 

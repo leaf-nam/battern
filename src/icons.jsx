@@ -1,6 +1,6 @@
-export function BrandMark() {
+export function BrandMark(props) {
   return (
-    <svg viewBox="0 0 40 40" className="brand-mark" aria-hidden="true">
+    <svg viewBox="0 0 40 40" className="brand-mark" aria-hidden="true" {...props}>
       <circle cx="20" cy="20" r="19" fill="#0b0b0c" stroke="#e3b23c" strokeWidth="1.4" />
       <path
         d="M9 24c4-6 9-10 11-10s2 2-1 5-9 8-8 10 6-1 10-5 4-8 3-9"

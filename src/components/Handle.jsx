@@ -12,6 +12,11 @@ export default function Handle({ x, y, gold, onDown }) {
         e.stopPropagation()
         onDown()
       }}
+      onTouchStart={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onDown()
+      }}
     />
   )
 }

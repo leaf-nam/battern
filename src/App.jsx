@@ -321,16 +321,25 @@ export default function App() {
           const cc = arcCenter(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
           if (cc) {
             const pd = dist(cc.cx, cc.cy, mx, my)
+            let bux, buy
             if (pd > 0.001) {
-              const bux = -(cc.cx - mx) / pd, buy = -(cc.cy - my) / pd
-              const dx = x - ds.mouseX, dy = y - ds.mouseY
-              const delta = dx * bux + dy * buy
-              const minR = chord * 0.5 + 0.5
-              const newR = Math.max(minR, ds.startR + delta)
-              setShapes(prev => prev.map(s => s.id === selectedId ? { ...s, r: newR } : s))
-              const projSag = ((x - mx) * bux + (y - my) * buy)
-              setArcHandlePos({ x: mx + bux * projSag, y: my + buy * projSag })
+              bux = -(cc.cx - mx) / pd
+              buy = -(cc.cy - my) / pd
+            } else {
+              const mp = arcMidpoint(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
+              if (!mp) return
+              const mmp = dist(mp.x, mp.y, mx, my)
+              if (mmp < 0.001) return
+              bux = (mp.x - mx) / mmp
+              buy = (mp.y - my) / mmp
             }
+            const dx = x - ds.mouseX, dy = y - ds.mouseY
+            const delta = dx * bux + dy * buy
+            const minR = chord * 0.5 + 0.5
+            const newR = Math.max(minR, ds.startR + delta)
+            setShapes(prev => prev.map(s => s.id === selectedId ? { ...s, r: newR } : s))
+            const projSag = ((x - mx) * bux + (y - my) * buy)
+            setArcHandlePos({ x: mx + bux * projSag, y: my + buy * projSag })
           }
         }
       } else {

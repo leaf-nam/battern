@@ -1,4 +1,4 @@
-import { dist, cubicPoint } from './geometry.js'
+import { dist, cubicPoint, arcCenter } from './geometry.js'
 
 function buildOrderedPath(shapes, snapMm) {
   if (shapes.length < 2) return null
@@ -47,6 +47,18 @@ function sampleSegment(shape, entryEnd, numSamples) {
     } else {
       pts.push({ x: shape.x2, y: shape.y2 }, { x: shape.x1, y: shape.y1 })
     }
+  } else if (shape.type === 'arc') {
+    const center = arcCenter(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
+    if (!center) return pts
+    const a1 = Math.atan2(shape.y1 - center.cy, shape.x1 - center.cx)
+    const a2 = Math.atan2(shape.y2 - center.cy, shape.x2 - center.cx)
+    let da = sweepDelta(a1, a2, shape.sweep === 0 ? 0 : 1)
+    if (entryEnd === 1) da = -da
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples
+      const a = a1 + da * t
+      pts.push({ x: center.cx + shape.r * Math.cos(a), y: center.cy + shape.r * Math.sin(a) })
+    }
   } else {
     for (let i = 0; i <= numSamples; i++) {
       const t = i / numSamples
@@ -58,6 +70,18 @@ function sampleSegment(shape, entryEnd, numSamples) {
     }
   }
   return pts
+}
+
+function sweepDelta(a1, a2, sweep) {
+  let d = a2 - a1
+  if (sweep === 0) {
+    while (d > 0) d -= 2 * Math.PI
+    while (d <= -2 * Math.PI) d += 2 * Math.PI
+  } else {
+    while (d < 0) d += 2 * Math.PI
+    while (d >= 2 * Math.PI) d -= 2 * Math.PI
+  }
+  return d
 }
 
 function signedArea(pts) {

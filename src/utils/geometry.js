@@ -124,6 +124,8 @@ export function computeFilletArc(ax, ay, bx, by, cx, cy, curvaturePercent) {
     ty2 = (ox - t2x) / tl2
   }
 
+  const sweep = shortIsCCW ? 0 : 1
+
   return {
     t1x, t1y,
     t2x, t2y,
@@ -132,7 +134,19 @@ export function computeFilletArc(ax, ay, bx, by, cx, cy, curvaturePercent) {
     c2x: t2x - h * tx2,
     c2y: t2y - h * ty2,
     radius: r,
+    sweep,
   }
+}
+
+export function arcCenter(x1, y1, x2, y2, r, sweep) {
+  const dx = x2 - x1, dy = y2 - y1
+  const chord = Math.hypot(dx, dy)
+  if (chord < 0.001) return null
+  const h = Math.sqrt(Math.max(0, r * r - (chord / 2) * (chord / 2)))
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
+  const px = -dy / chord * h, py = dx / chord * h
+  if (sweep === 0) return { cx: mx + px, cy: my + py }
+  return { cx: mx - px, cy: my - py }
 }
 
 export function findSnapTarget(shapes, excludeId, x, y) {

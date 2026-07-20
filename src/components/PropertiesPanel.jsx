@@ -1,5 +1,5 @@
 import { SHEET_PRESETS } from "../constants.js";
-import { curveLengthMm } from "../utils/geometry.js";
+import { dist, curveLengthMm } from "../utils/geometry.js";
 
 export default function PropertiesPanel({
   sheetKey,
@@ -365,7 +365,7 @@ export default function PropertiesPanel({
 
       {!selectedShape && (
         <p className="empty-hint">
-          캔버스에서 직선 또는 곡선을 클릭해 선택하세요. 선택 도구가 켜져 있어야
+          캔버스에서 직선/곡선/호를 클릭해 선택하세요. 선택 도구가 켜져 있어야
           합니다.
         </p>
       )}
@@ -421,6 +421,29 @@ export default function PropertiesPanel({
         </>
       )}
 
+      {selectedShape && selectedShape.type === "arc" && (
+        <>
+          <div className="field">
+            <label>반지름 (mm)</label>
+            <input
+              type="number"
+              readOnly
+              value={selectedShape.r.toFixed(1)}
+            />
+          </div>
+          <p className="empty-hint">
+            끝점을 공유하는 두 선 사이의 원형 호입니다. 반지름(r) 값으로
+            곡률이 결정됩니다.
+          </p>
+          <button
+            className="btn btn-danger"
+            onClick={() => onDelete(selectedShape.id)}
+          >
+            이 요소 삭제
+          </button>
+        </>
+      )}
+
       {shapes.length > 0 && (
         <>
           <p className="panel-section-title" style={{ marginTop: 22 }}>
@@ -435,7 +458,7 @@ export default function PropertiesPanel({
               >
                 <span>
                   <span className="tag">
-                    {s.type === "line" ? "직선" : "곡선"}
+                    {s.type === "line" ? "직선" : s.type === "arc" ? "호" : "곡선"}
                   </span>
                   #{i + 1}
                 </span>
@@ -448,7 +471,9 @@ export default function PropertiesPanel({
                 >
                   {((s.type === "line"
                     ? Math.hypot(s.x2 - s.x1, s.y2 - s.y1)
-                    : curveLengthMm(s)) /
+                    : s.type === "arc"
+                      ? s.r * 2 * Math.asin(Math.min(1, dist(s.x1, s.y1, s.x2, s.y2) / (2 * s.r)))
+                      : curveLengthMm(s)) /
                     10) |
                     0}
                   cm

@@ -34,7 +34,7 @@ describe('PropertiesPanel', () => {
 
   it('shows empty hint when no shape selected', () => {
     render(<PropertiesPanel {...baseProps} />)
-    expect(screen.getByText(/캔버스에서 직선 또는 곡선을 클릭해 선택하세요/)).toBeInTheDocument()
+    expect(screen.getByText(/캔버스에서 직선\/곡선\/호를 클릭해 선택하세요/)).toBeInTheDocument()
   })
 
   it('shows length input for a selected line', () => {

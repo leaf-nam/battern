@@ -523,6 +523,9 @@ export default function App() {
           r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
           r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
         }
+        if (s.type === 'arc') {
+          r.r = s.r * Math.min(nbw / box.w, nbh / box.h)
+        }
         return r
       }),
     )
@@ -559,11 +562,10 @@ export default function App() {
         return s
       }),
       {
-        id: arcId, type: 'curve',
+        id: arcId, type: 'arc',
         x1: fa.t1x, y1: fa.t1y,
         x2: fa.t2x, y2: fa.t2y,
-        c1x: fa.c1x, c1y: fa.c1y,
-        c2x: fa.c2x, c2y: fa.c2y,
+        r: fa.radius, sweep: fa.sweep,
       },
     ])
     setSelectedIds([])
@@ -1007,6 +1009,17 @@ export default function App() {
                         <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="transparent" strokeWidth={6} />
                         <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={stroke} strokeWidth={STROKE_MM} strokeLinecap="round" />
                       </>
+                    ) : s.type === 'arc' ? (
+                      <>
+                        <path
+                          d={`M ${s.x1},${s.y1} A ${s.r},${s.r} 0 0 ${s.sweep} ${s.x2},${s.y2}`}
+                          fill="none" stroke="transparent" strokeWidth={6}
+                        />
+                        <path
+                          d={`M ${s.x1},${s.y1} A ${s.r},${s.r} 0 0 ${s.sweep} ${s.x2},${s.y2}`}
+                          fill="none" stroke={stroke} strokeWidth={STROKE_MM} strokeLinecap="round"
+                        />
+                      </>
                     ) : (
                       <>
                         <path
@@ -1041,6 +1054,9 @@ export default function App() {
                             <Handle x={s.c1x} y={s.c1y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c1' }) }} />
                             <Handle x={s.c2x} y={s.c2y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c2' }) }} />
                           </>
+                        )}
+                        {s.type === 'arc' && (
+                          <circle cx={(s.x1 + s.x2) / 2} cy={(s.y1 + s.y2) / 2} r={1.2} fill="#e3b23c" opacity={0.5} pointerEvents="none" />
                         )}
                       </>
                     )}

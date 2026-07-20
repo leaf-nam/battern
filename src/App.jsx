@@ -572,6 +572,18 @@ export default function App() {
     setSelectedId(arcId)
   }
 
+  function setArcRadius(id, newR) {
+    const minR = 0.5
+    saveForUndo()
+    setShapes((prev) =>
+      prev.map((s) => {
+        if (s.id !== id || s.type !== 'arc') return s
+        const chord = dist(s.x1, s.y1, s.x2, s.y2)
+        return { ...s, r: Math.max(minR, newR) }
+      }),
+    )
+  }
+
   /* ---------------- zoom ---------------- */
 
   function zoomToFit() {
@@ -1237,6 +1249,7 @@ export default function App() {
                 onFilletCurvatureChange={setFilletCurvature}
                 canApplyFillet={canApplyFillet}
                 onApplyFillet={applyFillet}
+                onArcRadiusChange={setArcRadius}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

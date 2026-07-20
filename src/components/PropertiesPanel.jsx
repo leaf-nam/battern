@@ -34,6 +34,7 @@ export default function PropertiesPanel({
   onFilletCurvatureChange,
   canApplyFillet,
   onApplyFillet,
+  onArcRadiusChange,
 }) {
   const resizeW = selectionBounds ? (selectionBounds.w / 10).toFixed(1) : "";
   const resizeH = selectionBounds ? (selectionBounds.h / 10).toFixed(1) : "";
@@ -426,9 +427,18 @@ export default function PropertiesPanel({
           <div className="field">
             <label>반지름 (mm)</label>
             <input
+              key={"r-" + selectedShape.id}
               type="number"
-              readOnly
-              value={selectedShape.r.toFixed(1)}
+              step="0.1"
+              min="0.5"
+              defaultValue={selectedShape.r.toFixed(1)}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value);
+                if (v > 0) onArcRadiusChange(selectedShape.id, v);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.target.blur();
+              }}
             />
           </div>
           <p className="empty-hint">

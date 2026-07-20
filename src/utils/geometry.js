@@ -124,7 +124,7 @@ export function computeFilletArc(ax, ay, bx, by, cx, cy, curvaturePercent) {
     ty2 = (ox - t2x) / tl2
   }
 
-  const sweep = shortIsCCW ? 0 : 1
+  const sweep = shortIsCCW ? 1 : 0
 
   return {
     t1x, t1y,

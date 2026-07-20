@@ -79,6 +79,7 @@ export default function App() {
   const historyRef = useRef([])
   const redoRef = useRef([])
   const panRef = useRef({ active: false })
+  const importInputRef = useRef(null)
 
   function handleBackgroundUpload() {
     fileInputRef.current?.click()
@@ -820,6 +821,34 @@ export default function App() {
     persist(savedPatterns.filter((p) => p.id !== id))
   }
 
+  function handleExportPatterns() {
+    const json = JSON.stringify(savedPatterns, null, 2)
+    downloadBlob(`furboaee-patterns-${Date.now()}.json`, new Blob([json], { type: 'application/json' }))
+  }
+
+  function handleImportPatterns(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const imported = JSON.parse(e.target.result)
+        const arr = Array.isArray(imported) ? imported : [imported]
+        const seen = new Set(savedPatterns.map((p) => p.id))
+        const merged = [...savedPatterns]
+        for (const p of arr) {
+          if (p.id && p.name && p.shapes) {
+            if (!seen.has(p.id)) {
+              merged.push(p)
+              seen.add(p.id)
+            }
+          }
+        }
+        persist(merged)
+      } catch { /* ignore invalid file */ }
+    }
+    reader.readAsText(file)
+  }
+
   /* ---------------- grid ---------------- */
 
   const gridLines = useMemo(() => {
@@ -1370,7 +1399,10 @@ export default function App() {
                 onArcRadiusChange={setArcRadius}
               />
             ) : (
-              <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />
+              <>
+                <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} onExportAll={handleExportPatterns} onImportClick={() => importInputRef.current?.click()} />
+                <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => { handleImportPatterns(e.target.files[0]); e.target.value = '' }} />
+              </>
             )}
           </div>
         </aside>

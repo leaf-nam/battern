@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcCenter, arcMidpoint } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcCenter, arcMidpoint, circumcircle } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -402,16 +402,12 @@ export default function App() {
         if (handle === 'c1') return { ...s, c1x: x, c1y: y }
         if (handle === 'c2') return { ...s, c2x: x, c2y: y }
         if (handle === 'r') {
-          const c = dist(s.x1, s.y1, s.x2, s.y2)
-          const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2
-          const cc = arcCenter(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+          const cc = circumcircle(s.x1, s.y1, s.x2, s.y2, x, y)
           if (!cc) return s
-          const pd = dist(cc.cx, cc.cy, mx, my)
-          if (pd < 0.001) return s
-          const pux = (cc.cx - mx) / pd, puy = (cc.cy - my) / pd
-          const sag = (x - mx) * (-pux) + (y - my) * (-puy)
-          const sagClamped = Math.max(0.5, sag)
-          const newR = (c * c / 4 + sagClamped * sagClamped) / (2 * sagClamped)
+          const chord = dist(s.x1, s.y1, s.x2, s.y2)
+          const minR = chord * 0.5 + 0.1
+          const maxR = chord * 50
+          const newR = Math.max(minR, Math.min(maxR, cc.r))
           return { ...s, r: newR }
         }
         return s

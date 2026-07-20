@@ -77,6 +77,7 @@ export default function App() {
 
   const svgRef = useRef(null)
   const historyRef = useRef([])
+  const redoRef = useRef([])
   const panRef = useRef({ active: false })
 
   function handleBackgroundUpload() {
@@ -99,11 +100,19 @@ export default function App() {
   function saveForUndo() {
     historyRef.current.push(shapes)
     if (historyRef.current.length > 50) historyRef.current.shift()
+    redoRef.current = []
   }
 
   function undo() {
     if (historyRef.current.length === 0) return
+    redoRef.current.push(shapes)
     setShapes(historyRef.current.pop())
+  }
+
+  function redo() {
+    if (redoRef.current.length === 0) return
+    historyRef.current.push(shapes)
+    setShapes(redoRef.current.pop())
   }
 
   /* ---------------- persistence ---------------- */
@@ -968,6 +977,15 @@ export default function App() {
           >
             {ICONS.undo}
             취소
+          </button>
+          <button
+            className="tool-btn"
+            onClick={redo}
+            disabled={redoRef.current.length === 0}
+            title="다시 실행"
+          >
+            {ICONS.redo}
+            재실행
           </button>
 
           <button

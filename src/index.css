@@ -280,6 +280,7 @@ button {
   box-shadow: 0 0 0 1px var(--charcoal-3), 0 20px 60px rgba(0, 0, 0, 0.55);
   flex-shrink: 0;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .sheet-corner-tick {
@@ -861,9 +862,6 @@ button {
     max-width: 340px;
   }
 
-  .pattern-sheet {
-    touch-action: none;
-  }
 }
 
 /* ---------- Scrollbars ---------- */

@@ -28,6 +28,13 @@ export const ICONS = {
       <path d="M5 19L19 5" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   ),
+  arc: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="4" cy="18" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="18" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M4 18A10 10 0 0 1 20 18" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  ),
   curve: (
     <svg viewBox="0 0 24 24" fill="none">
       <circle cx="4" cy="19" r="1.6" fill="currentColor" stroke="none" />

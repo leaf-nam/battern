@@ -401,6 +401,9 @@ export default function App() {
         let newShape
         if (draft.type === 'curve') {
           newShape = { id, type: 'curve', x1, y1, x2, y2, ...makeDefaultCurve(x1, y1, x2, y2) }
+        } else if (draft.type === 'arc') {
+          const chord = dist(x1, y1, x2, y2)
+          newShape = { id, type: 'arc', x1, y1, x2, y2, r: chord / 2, sweep: 1 }
         } else {
           newShape = { id, type: 'line', x1, y1, x2, y2 }
         }
@@ -509,6 +512,7 @@ export default function App() {
       }
       if (e.code === 'KeyV') { setTool('select'); return }
       if (e.code === 'KeyL') { setTool('line'); return }
+      if (e.code === 'KeyA') { setTool('arc'); return }
       if (e.code === 'KeyC') { setTool('curve'); return }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -922,6 +926,10 @@ export default function App() {
             {ICONS.line}
             직선 <span className="tool-key">L</span>
           </button>
+          <button className={`tool-btn ${tool === 'arc' ? 'active' : ''}`} onClick={() => setTool('arc')} title="호 그리기 (A)">
+            {ICONS.arc}
+            호 <span className="tool-key">A</span>
+          </button>
           <button className={`tool-btn ${tool === 'curve' ? 'active' : ''}`} onClick={() => setTool('curve')} title="곡선 그리기 (C)">
             {ICONS.curve}
             곡선 <span className="tool-key">C</span>
@@ -1130,13 +1138,18 @@ export default function App() {
                 )
               })}
 
-              {draft && (
-                draft.type === 'line' ? (
-                  <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
-                ) : (
-                  <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
-                )
-              )}
+              {draft && (() => {
+                if (draft.type === 'line' || draft.type === 'curve') {
+                  return <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
+                }
+                if (draft.type === 'arc') {
+                  const chord = dist(draft.x1, draft.y1, draft.x2, draft.y2)
+                  const r2 = chord / 2
+                  if (r2 < 0.1) return null
+                  return <path d={`M ${draft.x1},${draft.y1} A ${r2},${r2} 0 0 1 ${draft.x2},${draft.y2}`} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" fill="none" />
+                }
+                return null
+              })()}
 
               {selectionBounds && tool === 'select' && selectedIds.length > 1 && (
                 <>

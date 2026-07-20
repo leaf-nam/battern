@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletCurve } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -541,24 +541,33 @@ export default function App() {
     const cx = other2.x, cy = other2.y
     const bx = sharedX, by = sharedY
 
-    const fc = computeFilletCurve(ax, ay, bx, by, cx, cy, filletCurvature)
-    if (!fc) return
+    const fa = computeFilletArc(ax, ay, bx, by, cx, cy, filletCurvature)
+    if (!fa) return
 
-    const newId = uid()
+    const arcId = uid()
 
     setShapes(prev => [
-      ...prev.filter(s => s.id !== shape1.id && s.id !== shape2.id),
+      ...prev.map(s => {
+        if (s.id === shape1.id) {
+          if (endpoint1 === 'x1') return { ...s, x1: fa.t1x, y1: fa.t1y }
+          else return { ...s, x2: fa.t1x, y2: fa.t1y }
+        }
+        if (s.id === shape2.id) {
+          if (endpoint2 === 'x1') return { ...s, x1: fa.t2x, y1: fa.t2y }
+          else return { ...s, x2: fa.t2x, y2: fa.t2y }
+        }
+        return s
+      }),
       {
-        id: newId,
-        type: 'curve',
-        x1: ax, y1: ay,
-        x2: cx, y2: cy,
-        c1x: fc.c1x, c1y: fc.c1y,
-        c2x: fc.c2x, c2y: fc.c2y,
+        id: arcId, type: 'curve',
+        x1: fa.t1x, y1: fa.t1y,
+        x2: fa.t2x, y2: fa.t2y,
+        c1x: fa.c1x, c1y: fa.c1y,
+        c2x: fa.c2x, c2y: fa.c2y,
       },
     ])
     setSelectedIds([])
-    setSelectedId(newId)
+    setSelectedId(arcId)
   }
 
   /* ---------------- zoom ---------------- */

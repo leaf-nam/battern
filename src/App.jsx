@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcMidpoint, circumcircle } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -401,6 +401,22 @@ export default function App() {
         if (handle === 'p2') return { ...s, x2: x, y2: y }
         if (handle === 'c1') return { ...s, c1x: x, c1y: y }
         if (handle === 'c2') return { ...s, c2x: x, c2y: y }
+        if (handle === 'r') {
+          const cc = circumcircle(s.x1, s.y1, s.x2, s.y2, x, y)
+          if (!cc) return s
+          const chord = dist(s.x1, s.y1, s.x2, s.y2)
+          const newR = Math.max(chord * 0.5 + 0.1, cc.r)
+          const cx = cc.cx, cy = cc.cy
+          const a1 = Math.atan2(s.y1 - cy, s.x1 - cx)
+          const a2 = Math.atan2(s.y2 - cy, s.x2 - cx)
+          const a3 = Math.atan2(y - cy, x - cx)
+          const norm = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+          const n1 = norm(a1), n2 = norm(a2), n3 = norm(a3)
+          let sweep
+          if (n1 < n2) { sweep = n3 > n1 && n3 < n2 ? 1 : 0 }
+          else { sweep = n3 > n1 || n3 < n2 ? 1 : 0 }
+          return { ...s, r: newR, sweep }
+        }
         return s
       }),
     )
@@ -1056,6 +1072,13 @@ export default function App() {
                         <line x1={s.x2} y1={s.y2} x2={s.c2x} y2={s.c2y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                       </>
                     )}
+                    {isActive && s.type === 'arc' && (() => {
+                      const mp = arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                      if (!mp) return null
+                      return (
+                        <line x1={(s.x1 + s.x2) / 2} y1={(s.y1 + s.y2) / 2} x2={mp.x} y2={mp.y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
+                      )
+                    })()}
 
                     {isActive && (
                       <>
@@ -1067,9 +1090,13 @@ export default function App() {
                             <Handle x={s.c2x} y={s.c2y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c2' }) }} />
                           </>
                         )}
-                        {s.type === 'arc' && (
-                          <circle cx={(s.x1 + s.x2) / 2} cy={(s.y1 + s.y2) / 2} r={1.2} fill="#e3b23c" opacity={0.5} pointerEvents="none" />
-                        )}
+                        {s.type === 'arc' && (() => {
+                          const mp = arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                          if (!mp) return null
+                          return (
+                            <Handle x={mp.x} y={mp.y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'r' }) }} />
+                          )
+                        })()}
                       </>
                     )}
                   </g>

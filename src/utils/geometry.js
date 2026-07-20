@@ -149,6 +149,29 @@ export function arcCenter(x1, y1, x2, y2, r, sweep) {
   return { cx: mx - px, cy: my - py }
 }
 
+export function arcMidpoint(x1, y1, x2, y2, r, sweep) {
+  const c = arcCenter(x1, y1, x2, y2, r, sweep)
+  if (!c) return null
+  const a1 = Math.atan2(y1 - c.cy, x1 - c.cx)
+  const a2 = Math.atan2(y2 - c.cy, x2 - c.cx)
+  let d = a2 - a1
+  if (sweep === 0) { while (d > 0) d -= 2 * Math.PI; while (d <= -2 * Math.PI) d += 2 * Math.PI }
+  else { while (d < 0) d += 2 * Math.PI; while (d >= 2 * Math.PI) d -= 2 * Math.PI }
+  const ma = a1 + d / 2
+  return { x: c.cx + r * Math.cos(ma), y: c.cy + r * Math.sin(ma) }
+}
+
+export function circumcircle(x1, y1, x2, y2, x3, y3) {
+  const d = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+  if (Math.abs(d) < 0.0001) return null
+  const s1 = x1 * x1 + y1 * y1
+  const s2 = x2 * x2 + y2 * y2
+  const s3 = x3 * x3 + y3 * y3
+  const cx = (s1 * (y2 - y3) + s2 * (y3 - y1) + s3 * (y1 - y2)) / d
+  const cy = (s1 * (x3 - x2) + s2 * (x1 - x3) + s3 * (x2 - x1)) / d
+  return { cx, cy, r: dist(cx, cy, x1, y1) }
+}
+
 export function findSnapTarget(shapes, excludeId, x, y) {
   let best = null
   let bestDist = SNAP_MM

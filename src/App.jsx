@@ -31,6 +31,7 @@ export default function App() {
   const [draft, setDraft] = useState(null)
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null)
+  const arcDragRef = useRef(null)
   const [snapTarget, setSnapTarget] = useState(null)
 
   const [marquee, setMarquee] = useState(null)
@@ -310,10 +311,31 @@ export default function App() {
         const snap = findSnapTarget(shapes, selectedId, x, y)
         if (snap) ({ x, y } = snap)
         setSnapTarget(snap)
+      } else if (dragging.handle === 'r' && arcDragRef.current) {
+        const ds = arcDragRef.current
+        let shape = shapes.find(s => s.id === selectedId)
+        if (shape && shape.type === 'arc') {
+          const chord = dist(shape.x1, shape.y1, shape.x2, shape.y2)
+          const mx = (shape.x1 + shape.x2) / 2, my = (shape.y1 + shape.y2) / 2
+          const cc = arcCenter(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
+          if (cc) {
+            const pd = dist(cc.cx, cc.cy, mx, my)
+            if (pd > 0.001) {
+              const bux = -(cc.cx - mx) / pd, buy = -(cc.cy - my) / pd
+              const dx = x - ds.mouseX, dy = y - ds.mouseY
+              const delta = dx * bux + dy * buy
+              const minR = chord * 0.5 + 0.5
+              const newR = Math.max(minR, ds.startR + delta)
+              setShapes(prev => prev.map(s => s.id === selectedId ? { ...s, r: newR } : s))
+            }
+          }
+        }
       } else {
         setSnapTarget(null)
       }
-      updateHandle(selectedId, dragging.handle, x, y)
+      if (dragging.handle !== 'r') {
+        updateHandle(selectedId, dragging.handle, x, y)
+      }
     }
   }
 
@@ -387,7 +409,10 @@ export default function App() {
       setDraft(null)
       dragStartRef.current = null
     }
-    if (dragging) setDragging(null)
+    if (dragging) {
+      if (dragging.handle === 'r') arcDragRef.current = null
+      setDragging(null)
+    }
     setSnapTarget(null)
   }
 
@@ -1087,7 +1112,12 @@ export default function App() {
                           const mp = arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
                           if (!mp) return null
                           return (
-                            <Handle x={mp.x} y={mp.y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'r' }) }} />
+                            <Handle x={mp.x} y={mp.y} gold onDown={(cx, cy) => { 
+                              saveForUndo()
+                              const mm = clientToMm(cx, cy)
+                              setDragging({ handle: 'r' })
+                              arcDragRef.current = { startR: s.r, mouseX: mm.x, mouseY: mm.y }
+                            }} />
                           )
                         })()}
                       </>

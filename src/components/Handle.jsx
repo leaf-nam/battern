@@ -10,12 +10,12 @@ export default function Handle({ x, y, gold, onDown }) {
       style={{ cursor: 'grab' }}
       onMouseDown={(e) => {
         e.stopPropagation()
-        onDown()
+        onDown(e.clientX, e.clientY)
       }}
       onTouchStart={(e) => {
         e.preventDefault()
         e.stopPropagation()
-        onDown()
+        onDown(e.touches[0].clientX, e.touches[0].clientY)
       }}
     />
   )

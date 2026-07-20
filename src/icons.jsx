@@ -28,6 +28,13 @@ export const ICONS = {
       <path d="M5 19L19 5" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   ),
+  arc: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="4" cy="18" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="18" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M4 18A10 10 0 0 1 20 18" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  ),
   curve: (
     <svg viewBox="0 0 24 24" fill="none">
       <circle cx="4" cy="19" r="1.6" fill="currentColor" stroke="none" />
@@ -44,6 +51,13 @@ export const ICONS = {
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M4 18L20 6" strokeWidth="1.4" strokeDasharray="2 2" />
       <path d="M4 21L20 9" strokeWidth="1.4" />
+    </svg>
+  ),
+  fillet: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 20L6 10C6 6.7 8.7 4 12 4L18 4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="4" r="1.4" fill="currentColor" stroke="none" />
     </svg>
   ),
   background: (

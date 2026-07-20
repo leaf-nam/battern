@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcCenter, arcMidpoint, circumcircle } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -31,6 +31,8 @@ export default function App() {
   const [draft, setDraft] = useState(null)
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null)
+  const arcDragRef = useRef(null)
+  const [arcHandlePos, setArcHandlePos] = useState(null)
   const [snapTarget, setSnapTarget] = useState(null)
 
   const [marquee, setMarquee] = useState(null)
@@ -44,6 +46,7 @@ export default function App() {
   const [backgroundImage, setBackgroundImage] = useState(null)
   const [seamEnabled, setSeamEnabled] = useState(false)
   const [seamWidth, setSeamWidth] = useState(DEFAULT_SEAM_MM)
+  const [filletCurvature, setFilletCurvature] = useState(50)
   const [includeBgExport, setIncludeBgExport] = useState(true)
   const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
@@ -309,10 +312,42 @@ export default function App() {
         const snap = findSnapTarget(shapes, selectedId, x, y)
         if (snap) ({ x, y } = snap)
         setSnapTarget(snap)
+      } else if (dragging.handle === 'r' && arcDragRef.current) {
+        const ds = arcDragRef.current
+        let shape = shapes.find(s => s.id === selectedId)
+        if (shape && shape.type === 'arc') {
+          const chord = dist(shape.x1, shape.y1, shape.x2, shape.y2)
+          const mx = (shape.x1 + shape.x2) / 2, my = (shape.y1 + shape.y2) / 2
+          const cc = arcCenter(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
+          if (cc) {
+            const pd = dist(cc.cx, cc.cy, mx, my)
+            let bux, buy
+            if (pd > 0.001) {
+              bux = -(cc.cx - mx) / pd
+              buy = -(cc.cy - my) / pd
+            } else {
+              const mp = arcMidpoint(shape.x1, shape.y1, shape.x2, shape.y2, shape.r, shape.sweep)
+              if (!mp) return
+              const mmp = dist(mp.x, mp.y, mx, my)
+              if (mmp < 0.001) return
+              bux = (mp.x - mx) / mmp
+              buy = (mp.y - my) / mmp
+            }
+            const dx = x - ds.mouseX, dy = y - ds.mouseY
+            const delta = dx * bux + dy * buy
+            const minR = chord * 0.5 + 0.5
+            const newR = Math.max(minR, ds.startR + delta)
+            setShapes(prev => prev.map(s => s.id === selectedId ? { ...s, r: newR } : s))
+            const projSag = ((x - mx) * bux + (y - my) * buy)
+            setArcHandlePos({ x: mx + bux * projSag, y: my + buy * projSag })
+          }
+        }
       } else {
         setSnapTarget(null)
       }
-      updateHandle(selectedId, dragging.handle, x, y)
+      if (dragging.handle !== 'r') {
+        updateHandle(selectedId, dragging.handle, x, y)
+      }
     }
   }
 
@@ -375,6 +410,9 @@ export default function App() {
         let newShape
         if (draft.type === 'curve') {
           newShape = { id, type: 'curve', x1, y1, x2, y2, ...makeDefaultCurve(x1, y1, x2, y2) }
+        } else if (draft.type === 'arc') {
+          const chord = dist(x1, y1, x2, y2)
+          newShape = { id, type: 'arc', x1, y1, x2, y2, r: chord / 2, sweep: 1 }
         } else {
           newShape = { id, type: 'line', x1, y1, x2, y2 }
         }
@@ -386,7 +424,10 @@ export default function App() {
       setDraft(null)
       dragStartRef.current = null
     }
-    if (dragging) setDragging(null)
+    if (dragging) {
+      if (dragging.handle === 'r') { arcDragRef.current = null; setArcHandlePos(null) }
+      setDragging(null)
+    }
     setSnapTarget(null)
   }
 
@@ -396,10 +437,33 @@ export default function App() {
     setShapes((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s
-        if (handle === 'p1') return { ...s, x1: x, y1: y }
-        if (handle === 'p2') return { ...s, x2: x, y2: y }
+        if (handle === 'p1') {
+          if (s.type === 'arc') {
+            const newChord = dist(x, y, s.x2, s.y2)
+            const minR = newChord * 0.5 + 0.5
+            return { ...s, x1: x, y1: y, r: Math.max(minR, s.r) }
+          }
+          return { ...s, x1: x, y1: y }
+        }
+        if (handle === 'p2') {
+          if (s.type === 'arc') {
+            const newChord = dist(s.x1, s.y1, x, y)
+            const minR = newChord * 0.5 + 0.5
+            return { ...s, x2: x, y2: y, r: Math.max(minR, s.r) }
+          }
+          return { ...s, x2: x, y2: y }
+        }
         if (handle === 'c1') return { ...s, c1x: x, c1y: y }
         if (handle === 'c2') return { ...s, c2x: x, c2y: y }
+        if (handle === 'r') {
+          const cc = circumcircle(s.x1, s.y1, s.x2, s.y2, x, y)
+          if (!cc) return s
+          const chord = dist(s.x1, s.y1, s.x2, s.y2)
+          const minR = chord * 0.5 + 0.1
+          const maxR = chord * 50
+          const newR = Math.max(minR, Math.min(maxR, cc.r))
+          return { ...s, r: newR }
+        }
         return s
       }),
     )
@@ -471,6 +535,7 @@ export default function App() {
       }
       if (e.code === 'KeyV') { setTool('select'); return }
       if (e.code === 'KeyL') { setTool('line'); return }
+      if (e.code === 'KeyA') { setTool('arc'); return }
       if (e.code === 'KeyC') { setTool('curve'); return }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -522,7 +587,64 @@ export default function App() {
           r.c2x = scale(s.c2x, box.x, box.w, nbx, nbw)
           r.c2y = scale(s.c2y, box.y, box.h, nby, nbh)
         }
+        if (s.type === 'arc') {
+          r.r = s.r * Math.min(nbw / box.w, nbh / box.h)
+        }
         return r
+      }),
+    )
+  }
+
+  /* ---------------- fillet ---------------- */
+
+  function applyFillet() {
+    const pair = findFilletPair(shapes, new Set(selectedIds))
+    if (!pair) return
+
+    saveForUndo()
+
+    const { shape1, endpoint1, other1, shape2, endpoint2, other2, sharedX, sharedY } = pair
+    const ax = other1.x, ay = other1.y
+    const cx = other2.x, cy = other2.y
+    const bx = sharedX, by = sharedY
+
+    const fa = computeFilletArc(ax, ay, bx, by, cx, cy, filletCurvature)
+    if (!fa) return
+
+    const arcId = uid()
+
+    setShapes(prev => [
+      ...prev.map(s => {
+        if (s.id === shape1.id) {
+          if (endpoint1 === 'x1') return { ...s, x1: fa.t1x, y1: fa.t1y }
+          else return { ...s, x2: fa.t1x, y2: fa.t1y }
+        }
+        if (s.id === shape2.id) {
+          if (endpoint2 === 'x1') return { ...s, x1: fa.t2x, y1: fa.t2y }
+          else return { ...s, x2: fa.t2x, y2: fa.t2y }
+        }
+        return s
+      }),
+      {
+        id: arcId, type: 'arc',
+        x1: fa.t1x, y1: fa.t1y,
+        x2: fa.t2x, y2: fa.t2y,
+        r: fa.radius, sweep: fa.sweep,
+      },
+    ])
+    setSelectedIds([])
+    setSelectedId(arcId)
+  }
+
+  function setArcRadius(id, newR) {
+    saveForUndo()
+    setShapes((prev) =>
+      prev.map((s) => {
+        if (s.id !== id || s.type !== 'arc') return s
+        const chord = dist(s.x1, s.y1, s.x2, s.y2)
+        const minR = chord * 0.5 + 0.5
+        const maxR = chord * 50
+        return { ...s, r: Math.max(minR, Math.min(maxR, newR)) }
       }),
     )
   }
@@ -565,6 +687,10 @@ export default function App() {
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
   const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
   const canSave = shapes.length > 0 && closureStatus.closed
+  const canApplyFillet = useMemo(() => {
+    if (selectedIds.length < 2) return false
+    return findFilletPair(shapes, new Set(selectedIds)) !== null
+  }, [shapes, selectedIds])
   const seamPath = useMemo(() => {
     if (!seamEnabled || !closureStatus.closed || seamWidth <= 0) return null
     return computeSeamPath(shapes, seamWidth)
@@ -823,6 +949,10 @@ export default function App() {
             {ICONS.line}
             직선 <span className="tool-key">L</span>
           </button>
+          <button className={`tool-btn ${tool === 'arc' ? 'active' : ''}`} onClick={() => setTool('arc')} title="호 그리기 (A)">
+            {ICONS.arc}
+            호 <span className="tool-key">A</span>
+          </button>
           <button className={`tool-btn ${tool === 'curve' ? 'active' : ''}`} onClick={() => setTool('curve')} title="곡선 그리기 (C)">
             {ICONS.curve}
             곡선 <span className="tool-key">C</span>
@@ -850,6 +980,16 @@ export default function App() {
           >
             {ICONS.seam}
             시접
+          </button>
+
+          <button
+            className="tool-btn"
+            onClick={applyFillet}
+            disabled={!canApplyFillet}
+            title={canApplyFillet ? '꼭지점을 곡선으로 부드럽게 처리' : '끝점을 공유하는 2개 이상의 요소를 선택해야 필렛을 적용할 수 있습니다'}
+          >
+            {ICONS.fillet}
+            필렛
           </button>
         </nav>
 
@@ -950,6 +1090,17 @@ export default function App() {
                         <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="transparent" strokeWidth={6} />
                         <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={stroke} strokeWidth={STROKE_MM} strokeLinecap="round" />
                       </>
+                    ) : s.type === 'arc' ? (
+                      <>
+                        <path
+                          d={`M ${s.x1},${s.y1} A ${s.r},${s.r} 0 0 ${s.sweep} ${s.x2},${s.y2}`}
+                          fill="none" stroke="transparent" strokeWidth={6}
+                        />
+                        <path
+                          d={`M ${s.x1},${s.y1} A ${s.r},${s.r} 0 0 ${s.sweep} ${s.x2},${s.y2}`}
+                          fill="none" stroke={stroke} strokeWidth={STROKE_MM} strokeLinecap="round"
+                        />
+                      </>
                     ) : (
                       <>
                         <path
@@ -974,6 +1125,13 @@ export default function App() {
                         <line x1={s.x2} y1={s.y2} x2={s.c2x} y2={s.c2y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
                       </>
                     )}
+                    {isActive && s.type === 'arc' && (() => {
+                      const mp = dragging?.handle === 'r' && arcHandlePos ? arcHandlePos : arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                      if (!mp) return null
+                      return (
+                        <line x1={(s.x1 + s.x2) / 2} y1={(s.y1 + s.y2) / 2} x2={mp.x} y2={mp.y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
+                      )
+                    })()}
 
                     {isActive && (
                       <>
@@ -985,19 +1143,36 @@ export default function App() {
                             <Handle x={s.c2x} y={s.c2y} gold onDown={() => { saveForUndo(); setDragging({ handle: 'c2' }) }} />
                           </>
                         )}
+                        {s.type === 'arc' && (() => {
+                          const mp = dragging?.handle === 'r' && arcHandlePos ? arcHandlePos : arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                          if (!mp) return null
+                          return (
+                            <Handle x={mp.x} y={mp.y} gold onDown={(cx, cy) => { 
+                              saveForUndo()
+                              const mm = clientToMm(cx, cy)
+                              setDragging({ handle: 'r' })
+                              arcDragRef.current = { startR: s.r, mouseX: mm.x, mouseY: mm.y }
+                            }} />
+                          )
+                        })()}
                       </>
                     )}
                   </g>
                 )
               })}
 
-              {draft && (
-                draft.type === 'line' ? (
-                  <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
-                ) : (
-                  <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
-                )
-              )}
+              {draft && (() => {
+                if (draft.type === 'line' || draft.type === 'curve') {
+                  return <line x1={draft.x1} y1={draft.y1} x2={draft.x2} y2={draft.y2} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" />
+                }
+                if (draft.type === 'arc') {
+                  const chord = dist(draft.x1, draft.y1, draft.x2, draft.y2)
+                  const r2 = chord / 2
+                  if (r2 < 0.1) return null
+                  return <path d={`M ${draft.x1},${draft.y1} A ${r2},${r2} 0 0 1 ${draft.x2},${draft.y2}`} stroke="#c1443c" strokeWidth={0.7} strokeDasharray="2 1.5" fill="none" />
+                }
+                return null
+              })()}
 
               {selectionBounds && tool === 'select' && selectedIds.length > 1 && (
                 <>
@@ -1160,6 +1335,11 @@ export default function App() {
                 onToggleSeam={() => setSeamEnabled((v) => !v)}
                 seamWidth={seamWidth}
                 onSeamWidthChange={setSeamWidth}
+                filletCurvature={filletCurvature}
+                onFilletCurvatureChange={setFilletCurvature}
+                canApplyFillet={canApplyFillet}
+                onApplyFillet={applyFillet}
+                onArcRadiusChange={setArcRadius}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

@@ -426,20 +426,28 @@ export default function PropertiesPanel({
         <>
           <div className="field">
             <label>반지름 (mm)</label>
-            <input
-              key={"r-" + selectedShape.id}
-              type="number"
-              step="0.1"
-              min="0.5"
-              defaultValue={selectedShape.r.toFixed(1)}
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                if (v > 0) onArcRadiusChange(selectedShape.id, v);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.target.blur();
-              }}
-            />
+            {(() => {
+              const chord = dist(selectedShape.x1, selectedShape.y1, selectedShape.x2, selectedShape.y2)
+              const minR = chord * 0.5 + 0.5
+              const maxR = chord * 50
+              return (
+                <input
+                  key={"r-" + selectedShape.id + "-" + selectedShape.r.toFixed(1)}
+                  type="number"
+                  step="0.1"
+                  min={minR.toFixed(1)}
+                  max={maxR.toFixed(1)}
+                  defaultValue={selectedShape.r.toFixed(1)}
+                  onBlur={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v) && v >= minR && v <= maxR) onArcRadiusChange(selectedShape.id, v);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.target.blur();
+                  }}
+                />
+              )
+            })()}
           </div>
           <p className="empty-hint">
             끝점을 공유하는 두 선 사이의 원형 호입니다. 반지름(r) 값으로

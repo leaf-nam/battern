@@ -610,13 +610,14 @@ export default function App() {
   }
 
   function setArcRadius(id, newR) {
-    const minR = 0.5
     saveForUndo()
     setShapes((prev) =>
       prev.map((s) => {
         if (s.id !== id || s.type !== 'arc') return s
         const chord = dist(s.x1, s.y1, s.x2, s.y2)
-        return { ...s, r: Math.max(minR, newR) }
+        const minR = chord * 0.5 + 0.5
+        const maxR = chord * 50
+        return { ...s, r: Math.max(minR, Math.min(maxR, newR)) }
       }),
     )
   }

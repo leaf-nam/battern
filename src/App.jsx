@@ -32,6 +32,7 @@ export default function App() {
   const dragStartRef = useRef(null)
   const [dragging, setDragging] = useState(null)
   const arcDragRef = useRef(null)
+  const [arcHandlePos, setArcHandlePos] = useState(null)
   const [snapTarget, setSnapTarget] = useState(null)
 
   const [marquee, setMarquee] = useState(null)
@@ -327,6 +328,8 @@ export default function App() {
               const minR = chord * 0.5 + 0.5
               const newR = Math.max(minR, ds.startR + delta)
               setShapes(prev => prev.map(s => s.id === selectedId ? { ...s, r: newR } : s))
+              const projSag = ((x - mx) * bux + (y - my) * buy)
+              setArcHandlePos({ x: mx + bux * projSag, y: my + buy * projSag })
             }
           }
         }
@@ -410,7 +413,7 @@ export default function App() {
       dragStartRef.current = null
     }
     if (dragging) {
-      if (dragging.handle === 'r') arcDragRef.current = null
+      if (dragging.handle === 'r') { arcDragRef.current = null; setArcHandlePos(null) }
       setDragging(null)
     }
     setSnapTarget(null)
@@ -1091,7 +1094,7 @@ export default function App() {
                       </>
                     )}
                     {isActive && s.type === 'arc' && (() => {
-                      const mp = arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                      const mp = dragging?.handle === 'r' && arcHandlePos ? arcHandlePos : arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
                       if (!mp) return null
                       return (
                         <line x1={(s.x1 + s.x2) / 2} y1={(s.y1 + s.y2) / 2} x2={mp.x} y2={mp.y} stroke="#e3b23c" strokeWidth={0.4} strokeDasharray="1.5 1.5" />
@@ -1109,7 +1112,7 @@ export default function App() {
                           </>
                         )}
                         {s.type === 'arc' && (() => {
-                          const mp = arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
+                          const mp = dragging?.handle === 'r' && arcHandlePos ? arcHandlePos : arcMidpoint(s.x1, s.y1, s.x2, s.y2, s.r, s.sweep)
                           if (!mp) return null
                           return (
                             <Handle x={mp.x} y={mp.y} gold onDown={(cx, cy) => { 

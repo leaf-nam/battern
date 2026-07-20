@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useGoogleLogin } from '@react-oauth/google'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcCenter, arcMidpoint, circumcircle } from './utils/geometry.js'
@@ -6,6 +7,7 @@ import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
 import { uid } from './utils/uid.js'
+import { listDriveFiles, readDriveFile, createDriveFile, updateDriveFile } from './utils/drive.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
 import PropertiesPanel from './components/PropertiesPanel.jsx'
@@ -41,6 +43,13 @@ export default function App() {
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
+  const [driveToken, setDriveToken] = useState(null)
+  const [driveFiles, setDriveFiles] = useState([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const driveLogin = useGoogleLogin({
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    onSuccess: (res) => setDriveToken(res.access_token),
+  })
   const [saveName, setSaveName] = useState('')
 
   const [backgroundImage, setBackgroundImage] = useState(null)
@@ -849,6 +858,57 @@ export default function App() {
     reader.readAsText(file)
   }
 
+  /* ---------------- Drive ---------------- */
+
+  async function handleDriveList() {
+    if (!driveToken) return
+    setDriveLoading(true)
+    try {
+      const files = await listDriveFiles(driveToken)
+      setDriveFiles(files)
+    } catch (e) {
+      console.error(e)
+      setDriveToken(null)
+    } finally {
+      setDriveLoading(false)
+    }
+  }
+
+  function handleDriveLogin() {
+    setDriveToken(null)
+    setDriveFiles([])
+    driveLogin()
+  }
+
+  function handleDriveLoad(file) {
+    setDriveLoading(true)
+    readDriveFile(driveToken, file.id)
+      .then((data) => {
+        if (data.shapes) {
+          setShapes(data.shapes)
+          persist(data.shapes)
+        }
+      })
+      .catch((e) => {
+        console.error(e)
+        setDriveToken(null)
+      })
+      .finally(() => setDriveLoading(false))
+  }
+
+  function handleDriveSave() {
+    const name = prompt('저장할 이름을 입력하세요', `pattern-${Date.now()}`)
+    if (!name) return
+    setDriveLoading(true)
+    createDriveFile(driveToken, name + '.pattern.json', { name, shapes })
+      .then(() => handleDriveList())
+      .catch((e) => {
+        console.error(e)
+        setDriveToken(null)
+      })
+      .finally(() => setDriveLoading(false))
+  }
+
   /* ---------------- grid ---------------- */
 
   const gridLines = useMemo(() => {
@@ -1400,7 +1460,7 @@ export default function App() {
               />
             ) : (
               <>
-                <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} onExportAll={handleExportPatterns} onImportClick={() => importInputRef.current?.click()} />
+                <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} onExportAll={handleExportPatterns} onImportClick={() => importInputRef.current?.click()} driveToken={driveToken} driveFiles={driveFiles} driveLoading={driveLoading} onDriveLogin={handleDriveLogin} onDriveList={handleDriveList} onDriveLoad={handleDriveLoad} onDriveSave={handleDriveSave} />
                 <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => { handleImportPatterns(e.target.files[0]); e.target.value = '' }} />
               </>
             )}

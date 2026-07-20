@@ -428,8 +428,22 @@ export default function App() {
     setShapes((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s
-        if (handle === 'p1') return { ...s, x1: x, y1: y }
-        if (handle === 'p2') return { ...s, x2: x, y2: y }
+        if (handle === 'p1') {
+          if (s.type === 'arc') {
+            const newChord = dist(x, y, s.x2, s.y2)
+            const minR = newChord * 0.5 + 0.5
+            return { ...s, x1: x, y1: y, r: Math.max(minR, s.r) }
+          }
+          return { ...s, x1: x, y1: y }
+        }
+        if (handle === 'p2') {
+          if (s.type === 'arc') {
+            const newChord = dist(s.x1, s.y1, x, y)
+            const minR = newChord * 0.5 + 0.5
+            return { ...s, x2: x, y2: y, r: Math.max(minR, s.r) }
+          }
+          return { ...s, x2: x, y2: y }
+        }
         if (handle === 'c1') return { ...s, c1x: x, c1y: y }
         if (handle === 'c2') return { ...s, c2x: x, c2y: y }
         if (handle === 'r') {

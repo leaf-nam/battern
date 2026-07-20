@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget, findFilletCandidates, computeFilletGeometry } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletCurve } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -531,83 +531,34 @@ export default function App() {
   /* ---------------- fillet ---------------- */
 
   function applyFillet() {
-    const ids = new Set(selectedIds)
-    if (ids.size < 2) return
-    const candidates = findFilletCandidates(shapes, ids)
-    if (candidates.length === 0) return
+    const pair = findFilletPair(shapes, new Set(selectedIds))
+    if (!pair) return
 
     saveForUndo()
 
-    const processed = new Set()
-    const updates = []
-    const newCurves = []
+    const { shape1, endpoint1, other1, shape2, endpoint2, other2, sharedX, sharedY } = pair
+    const ax = other1.x, ay = other1.y
+    const cx = other2.x, cy = other2.y
+    const bx = sharedX, by = sharedY
 
-    for (const g of candidates) {
-      const { x: bx, y: by, members } = g
+    const fc = computeFilletCurve(ax, ay, bx, by, cx, cy, filletCurvature)
+    if (!fc) return
 
-      const vectors = members.map(m => ({
-        shapeId: m.shapeId,
-        endpoint: m.which,
-        otherX: m.which === 'x1' ? shapes.find(s => s.id === m.shapeId).x2 : shapes.find(s => s.id === m.shapeId).x1,
-        otherY: m.which === 'y1' ? shapes.find(s => s.id === m.shapeId).y2 : shapes.find(s => s.id === m.shapeId).y1,
-      }))
+    const newId = uid()
 
-      for (const v of vectors) {
-        const s = shapes.find(x => x.id === v.shapeId)
-        v.dx = v.otherX - bx
-        v.dy = v.otherY - by
-        v.len = Math.hypot(v.dx, v.dy)
-      }
-
-      vectors.sort((a, b) => Math.atan2(a.dy, a.dx) - Math.atan2(b.dy, b.dx))
-
-      for (let i = 0; i < vectors.length; i++) {
-        const v1 = vectors[i]
-        const v2 = vectors[(i + 1) % vectors.length]
-        const key1 = v1.shapeId + '-' + v1.endpoint
-        const key2 = v2.shapeId + '-' + v2.endpoint
-        if (processed.has(key1) || processed.has(key2)) continue
-
-        const fg = computeFilletGeometry(v1.otherX, v1.otherY, bx, by, v2.otherX, v2.otherY, filletCurvature)
-        if (!fg) continue
-
-        processed.add(key1)
-        processed.add(key2)
-
-        updates.push({ shapeId: v1.shapeId, endpoint: v1.endpoint, newX: fg.t1x, newY: fg.t1y })
-        updates.push({ shapeId: v2.shapeId, endpoint: v2.endpoint, newX: fg.t2x, newY: fg.t2y })
-
-        newCurves.push({
-          id: uid(),
-          type: 'curve',
-          x1: fg.t1x, y1: fg.t1y,
-          x2: fg.t2x, y2: fg.t2y,
-          c1x: fg.c1x, c1y: fg.c1y,
-          c2x: fg.c2x, c2y: fg.c2y,
-        })
-      }
-    }
-
-    if (newCurves.length === 0) return
-
-    setShapes(prev => {
-      const map = {}
-      for (const u of updates) map[u.shapeId + '-' + u.endpoint] = u
-      return [
-        ...prev.map(s => {
-          const u1 = map[s.id + '-x1']
-          const u2 = map[s.id + '-x2']
-          if (!u1 && !u2) return s
-          const r = { ...s }
-          if (u1) { r.x1 = u1.newX; r.y1 = u1.newY }
-          if (u2) { r.x2 = u2.newX; r.y2 = u2.newY }
-          return r
-        }),
-        ...newCurves,
-      ]
-    })
+    setShapes(prev => [
+      ...prev.filter(s => s.id !== shape1.id && s.id !== shape2.id),
+      {
+        id: newId,
+        type: 'curve',
+        x1: ax, y1: ay,
+        x2: cx, y2: cy,
+        c1x: fc.c1x, c1y: fc.c1y,
+        c2x: fc.c2x, c2y: fc.c2y,
+      },
+    ])
     setSelectedIds([])
-    if (newCurves.length === 1) setSelectedId(newCurves[0].id)
+    setSelectedId(newId)
   }
 
   /* ---------------- zoom ---------------- */
@@ -650,7 +601,7 @@ export default function App() {
   const canSave = shapes.length > 0 && closureStatus.closed
   const canApplyFillet = useMemo(() => {
     if (selectedIds.length < 2) return false
-    return findFilletCandidates(shapes, new Set(selectedIds)).length > 0
+    return findFilletPair(shapes, new Set(selectedIds)) !== null
   }, [shapes, selectedIds])
   const seamPath = useMemo(() => {
     if (!seamEnabled || !closureStatus.closed || seamWidth <= 0) return null

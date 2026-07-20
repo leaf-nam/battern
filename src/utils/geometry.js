@@ -39,98 +39,44 @@ export function curveLengthMm(s, steps = 40) {
   return total
 }
 
-export function findFilletCandidates(shapes, selectedIds) {
+export function findFilletPair(shapes, selectedIds) {
   const selected = shapes.filter(s => selectedIds.has(s.id))
-  const endpoints = []
-  for (const s of selected) {
-    endpoints.push({ x: s.x1, y: s.y1, shapeId: s.id, which: 'x1' })
-    endpoints.push({ x: s.x2, y: s.y2, shapeId: s.id, which: 'x2' })
-  }
-  const groups = []
-  for (const ep of endpoints) {
-    let found = false
-    for (const g of groups) {
-      if (dist(g.x, g.y, ep.x, ep.y) <= SNAP_MM) {
-        g.members.push(ep)
-        found = true
-        break
+  if (selected.length < 2) return null
+  for (let i = 0; i < selected.length; i++) {
+    for (let j = i + 1; j < selected.length; j++) {
+      const a = selected[i], b = selected[j]
+      const aEnds = [[a.x1, a.y1, 'x1'], [a.x2, a.y2, 'x2']]
+      for (const [ax, ay, aWhich] of aEnds) {
+        const bEnds = [[b.x1, b.y1, 'x1'], [b.x2, b.y2, 'x2']]
+        for (const [bx, by, bWhich] of bEnds) {
+          if (dist(ax, ay, bx, by) <= SNAP_MM) {
+            const aOther = aWhich === 'x1' ? { x: a.x2, y: a.y2 } : { x: a.x1, y: a.y1 }
+            const bOther = bWhich === 'x1' ? { x: b.x2, y: b.y2 } : { x: b.x1, y: b.y1 }
+            return {
+              shape1: a, endpoint1: aWhich, other1: aOther,
+              shape2: b, endpoint2: bWhich, other2: bOther,
+              sharedX: ax, sharedY: ay,
+            }
+          }
+        }
       }
     }
-    if (!found) {
-      groups.push({ x: ep.x, y: ep.y, members: [ep] })
-    }
   }
-  return groups.filter(g => g.members.length >= 2)
+  return null
 }
 
-export function computeFilletGeometry(ax, ay, bx, by, cx, cy, curvaturePercent) {
-  const v1x = ax - bx, v1y = ay - by
-  const v2x = cx - bx, v2y = cy - by
-  const len1 = Math.hypot(v1x, v1y)
-  const len2 = Math.hypot(v2x, v2y)
+export function computeFilletCurve(ax, ay, bx, by, cx, cy, curvaturePercent) {
+  const len1 = Math.hypot(ax - bx, ay - by)
+  const len2 = Math.hypot(cx - bx, cy - by)
   if (len1 < 0.1 || len2 < 0.1) return null
 
-  const u1x = v1x / len1, u1y = v1y / len1
-  const u2x = v2x / len2, u2y = v2y / len2
-
-  const cosTheta = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y))
-  const theta = Math.acos(cosTheta)
-  if (theta < 0.01 || theta > Math.PI - 0.01) return null
-
-  const arcAngle = Math.PI - theta
-  if (arcAngle < 0.01) return null
-
-  const maxR = Math.min(len1, len2) * Math.tan(theta / 2)
-  const r = (curvaturePercent / 100) * maxR
-  if (r < 0.01) return null
-
-  const d = r / Math.tan(theta / 2)
-  const t1x = bx + u1x * d, t1y = by + u1y * d
-  const t2x = bx + u2x * d, t2y = by + u2y * d
-
-  let bisx = u1x + u2x, bisy = u1y + u2y
-  const bisLen = Math.hypot(bisx, bisy)
-  if (bisLen < 0.001) return null
-  bisx /= bisLen
-  bisy /= bisLen
-
-  const distBO = r / Math.sin(theta / 2)
-  const ox = bx + bisx * distBO, oy = by + bisy * distBO
-
-  const a1 = Math.atan2(t1y - oy, t1x - ox)
-  const a2 = Math.atan2(t2y - oy, t2x - ox)
-
-  let ccw = (a2 - a1 + 2 * Math.PI) % (2 * Math.PI)
-  let cw = (a1 - a2 + 2 * Math.PI) % (2 * Math.PI)
-  const shortIsCCW = ccw <= cw
-  const alpha = Math.min(ccw, cw)
-
-  const h = (4 / 3) * Math.tan(alpha / 4) * r
-
-  let tx1, ty1, tx2, ty2
-  if (shortIsCCW) {
-    const tl1 = Math.hypot(oy - t1y, t1x - ox)
-    tx1 = (oy - t1y) / tl1
-    ty1 = (t1x - ox) / tl1
-    const tl2 = Math.hypot(oy - t2y, t2x - ox)
-    tx2 = (oy - t2y) / tl2
-    ty2 = (t2x - ox) / tl2
-  } else {
-    const tl1 = Math.hypot(t1y - oy, ox - t1x)
-    tx1 = (t1y - oy) / tl1
-    ty1 = (ox - t1x) / tl1
-    const tl2 = Math.hypot(t2y - oy, ox - t2x)
-    tx2 = (t2y - oy) / tl2
-    ty2 = (ox - t2x) / tl2
-  }
+  const ratio = Math.max(0, Math.min(1, curvaturePercent / 100))
 
   return {
-    t1x, t1y,
-    t2x, t2y,
-    c1x: t1x + h * tx1,
-    c1y: t1y + h * ty1,
-    c2x: t2x - h * tx2,
-    c2y: t2y - h * ty2,
+    c1x: ax + (bx - ax) * ratio,
+    c1y: ay + (by - ay) * ratio,
+    c2x: cx + (bx - cx) * ratio,
+    c2y: cy + (by - cy) * ratio,
   }
 }
 

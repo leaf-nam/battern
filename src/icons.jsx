@@ -46,6 +46,13 @@ export const ICONS = {
       <path d="M4 21L20 9" strokeWidth="1.4" />
     </svg>
   ),
+  fillet: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 20L6 10C6 6.7 8.7 4 12 4L18 4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="4" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   background: (
     <svg viewBox="0 0 24 24" fill="none">
       <rect x="2" y="4" width="20" height="16" rx="1.5" strokeWidth="1.6" />

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
-import { dist, makeDefaultCurve, findSnapTarget } from './utils/geometry.js'
+import { dist, makeDefaultCurve, findSnapTarget, findFilletCandidates, computeFilletGeometry } from './utils/geometry.js'
 import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
@@ -44,6 +44,7 @@ export default function App() {
   const [backgroundImage, setBackgroundImage] = useState(null)
   const [seamEnabled, setSeamEnabled] = useState(false)
   const [seamWidth, setSeamWidth] = useState(DEFAULT_SEAM_MM)
+  const [filletCurvature, setFilletCurvature] = useState(50)
   const [includeBgExport, setIncludeBgExport] = useState(true)
   const [transparentBgExport, setTransparentBgExport] = useState(false)
   const fileInputRef = useRef(null)
@@ -527,6 +528,88 @@ export default function App() {
     )
   }
 
+  /* ---------------- fillet ---------------- */
+
+  function applyFillet() {
+    const ids = new Set(selectedIds)
+    if (ids.size < 2) return
+    const candidates = findFilletCandidates(shapes, ids)
+    if (candidates.length === 0) return
+
+    saveForUndo()
+
+    const processed = new Set()
+    const updates = []
+    const newCurves = []
+
+    for (const g of candidates) {
+      const { x: bx, y: by, members } = g
+
+      const vectors = members.map(m => ({
+        shapeId: m.shapeId,
+        endpoint: m.which,
+        otherX: m.which === 'x1' ? shapes.find(s => s.id === m.shapeId).x2 : shapes.find(s => s.id === m.shapeId).x1,
+        otherY: m.which === 'y1' ? shapes.find(s => s.id === m.shapeId).y2 : shapes.find(s => s.id === m.shapeId).y1,
+      }))
+
+      for (const v of vectors) {
+        const s = shapes.find(x => x.id === v.shapeId)
+        v.dx = v.otherX - bx
+        v.dy = v.otherY - by
+        v.len = Math.hypot(v.dx, v.dy)
+      }
+
+      vectors.sort((a, b) => Math.atan2(a.dy, a.dx) - Math.atan2(b.dy, b.dx))
+
+      for (let i = 0; i < vectors.length; i++) {
+        const v1 = vectors[i]
+        const v2 = vectors[(i + 1) % vectors.length]
+        const key1 = v1.shapeId + '-' + v1.endpoint
+        const key2 = v2.shapeId + '-' + v2.endpoint
+        if (processed.has(key1) || processed.has(key2)) continue
+
+        const fg = computeFilletGeometry(v1.otherX, v1.otherY, bx, by, v2.otherX, v2.otherY, filletCurvature)
+        if (!fg) continue
+
+        processed.add(key1)
+        processed.add(key2)
+
+        updates.push({ shapeId: v1.shapeId, endpoint: v1.endpoint, newX: fg.t1x, newY: fg.t1y })
+        updates.push({ shapeId: v2.shapeId, endpoint: v2.endpoint, newX: fg.t2x, newY: fg.t2y })
+
+        newCurves.push({
+          id: uid(),
+          type: 'curve',
+          x1: fg.t1x, y1: fg.t1y,
+          x2: fg.t2x, y2: fg.t2y,
+          c1x: fg.c1x, c1y: fg.c1y,
+          c2x: fg.c2x, c2y: fg.c2y,
+        })
+      }
+    }
+
+    if (newCurves.length === 0) return
+
+    setShapes(prev => {
+      const map = {}
+      for (const u of updates) map[u.shapeId + '-' + u.endpoint] = u
+      return [
+        ...prev.map(s => {
+          const u1 = map[s.id + '-x1']
+          const u2 = map[s.id + '-x2']
+          if (!u1 && !u2) return s
+          const r = { ...s }
+          if (u1) { r.x1 = u1.newX; r.y1 = u1.newY }
+          if (u2) { r.x2 = u2.newX; r.y2 = u2.newY }
+          return r
+        }),
+        ...newCurves,
+      ]
+    })
+    setSelectedIds([])
+    if (newCurves.length === 1) setSelectedId(newCurves[0].id)
+  }
+
   /* ---------------- zoom ---------------- */
 
   function zoomToFit() {
@@ -565,6 +648,10 @@ export default function App() {
   const selectedShape = useMemo(() => shapes.find((s) => s.id === selectedId) || null, [shapes, selectedId])
   const closureStatus = useMemo(() => computeClosure(shapes), [shapes])
   const canSave = shapes.length > 0 && closureStatus.closed
+  const canApplyFillet = useMemo(() => {
+    if (selectedIds.length < 2) return false
+    return findFilletCandidates(shapes, new Set(selectedIds)).length > 0
+  }, [shapes, selectedIds])
   const seamPath = useMemo(() => {
     if (!seamEnabled || !closureStatus.closed || seamWidth <= 0) return null
     return computeSeamPath(shapes, seamWidth)
@@ -850,6 +937,16 @@ export default function App() {
           >
             {ICONS.seam}
             시접
+          </button>
+
+          <button
+            className="tool-btn"
+            onClick={applyFillet}
+            disabled={!canApplyFillet}
+            title={canApplyFillet ? '꼭지점을 곡선으로 부드럽게 처리' : '끝점을 공유하는 2개 이상의 요소를 선택해야 필렛을 적용할 수 있습니다'}
+          >
+            {ICONS.fillet}
+            필렛
           </button>
         </nav>
 
@@ -1160,6 +1257,10 @@ export default function App() {
                 onToggleSeam={() => setSeamEnabled((v) => !v)}
                 seamWidth={seamWidth}
                 onSeamWidthChange={setSeamWidth}
+                filletCurvature={filletCurvature}
+                onFilletCurvatureChange={setFilletCurvature}
+                canApplyFillet={canApplyFillet}
+                onApplyFillet={applyFillet}
               />
             ) : (
               <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />

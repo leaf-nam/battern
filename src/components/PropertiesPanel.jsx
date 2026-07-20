@@ -30,6 +30,10 @@ export default function PropertiesPanel({
   onToggleSeam,
   seamWidth,
   onSeamWidthChange,
+  filletCurvature,
+  onFilletCurvatureChange,
+  canApplyFillet,
+  onApplyFillet,
 }) {
   const resizeW = selectionBounds ? (selectionBounds.w / 10).toFixed(1) : "";
   const resizeH = selectionBounds ? (selectionBounds.h / 10).toFixed(1) : "";
@@ -63,6 +67,36 @@ export default function PropertiesPanel({
           </strong>{" "}
           — Delete 키로 일괄 삭제할 수 있습니다.
         </div>
+      )}
+
+      {multiCount > 0 && (
+        <>
+          <p className="panel-section-title">필렛</p>
+          <div className="field">
+            <label>곡률: {filletCurvature}%</label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={filletCurvature}
+              onChange={(e) => onFilletCurvatureChange(parseInt(e.target.value))}
+              style={{ width: "100%" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+              <span>직선 (0%)</span>
+              <span>원형 (100%)</span>
+            </div>
+          </div>
+          <button
+            className="btn"
+            onClick={onApplyFillet}
+            disabled={!canApplyFillet}
+            style={{ width: "100%", marginTop: 6 }}
+            title={canApplyFillet ? '' : '끝점을 공유하는 2개 이상의 요소를 선택해야 합니다'}
+          >
+            필렛 적용
+          </button>
+        </>
       )}
       {selectionBounds && (
         <>

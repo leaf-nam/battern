@@ -410,8 +410,8 @@ export default function App() {
           if (pd < 0.001) return s
           const pux = (cc.cx - mx) / pd, puy = (cc.cy - my) / pd
           const sag = (x - mx) * (-pux) + (y - my) * (-puy)
-          const s = Math.max(0.5, sag)
-          const newR = (c * c / 4 + s * s) / (2 * s)
+          const sagClamped = Math.max(0.5, sag)
+          const newR = (c * c / 4 + sagClamped * sagClamped) / (2 * sagClamped)
           return { ...s, r: newR }
         }
         return s

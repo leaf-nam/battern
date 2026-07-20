@@ -962,6 +962,16 @@ export default function App() {
 
           <button
             className="tool-btn"
+            onClick={undo}
+            disabled={historyRef.current.length === 0}
+            title="되돌리기 (Ctrl+Z)"
+          >
+            {ICONS.undo}
+            취소
+          </button>
+
+          <button
+            className="tool-btn"
             onClick={deleteSelectedShapes}
             disabled={!selectedId && selectedIds.length === 0}
             title="선택한 요소 삭제 (Delete)"

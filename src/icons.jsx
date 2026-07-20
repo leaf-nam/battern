@@ -42,6 +42,11 @@ export const ICONS = {
       <path d="M4 19C10 19 8 6 20 6" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   ),
+  undo: (
+    <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12a8 8 0 1 1 8 8M4 12l4-4m-4 4 4 4" strokeWidth="1.6" />
+    </svg>
+  ),
   trash: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />

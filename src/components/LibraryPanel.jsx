@@ -1,16 +1,16 @@
 export default function LibraryPanel({ savedPatterns, onLoad, onDelete, onExportAll, onImportClick, driveToken, driveFiles, driveLoading, onDriveLogin, onDriveList, onDriveLoad, onDriveSave }) {
   return (
     <>
-      {savedPatterns.length > 0 && (
-        <div className="saved-list-toolbar">
-          <button className="btn btn-ghost" onClick={onImportClick}>
-            파일 가져오기
-          </button>
+      <div className="saved-list-toolbar">
+        <button className="btn btn-ghost" onClick={onImportClick}>
+          컴퓨터에서 불러오기
+        </button>
+        {savedPatterns.length > 0 && (
           <button className="btn btn-ghost" onClick={onExportAll}>
             전체 내보내기
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {!savedPatterns.length ? (
         <p className="empty-hint">아직 저장된 패턴이 없습니다. 상단의 "보관함에 저장" 버튼으로 현재 작업을 저장하세요.</p>
       ) : (

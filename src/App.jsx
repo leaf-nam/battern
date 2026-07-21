@@ -7,7 +7,7 @@ import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
 import { uid } from './utils/uid.js'
-import { listDriveFiles, readDriveFile, createDriveFile, updateDriveFile } from './utils/drive.js'
+import { listDriveFiles, readDriveFile, createDriveFile } from './utils/drive.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
 import PropertiesPanel from './components/PropertiesPanel.jsx'
@@ -49,6 +49,7 @@ export default function App() {
   const driveLogin = useGoogleLogin({
     scope: 'https://www.googleapis.com/auth/drive.file',
     onSuccess: (res) => setDriveToken(res.access_token),
+    onError: (err) => alert('Google 로그인 오류: ' + JSON.stringify(err)),
   })
   const [saveName, setSaveName] = useState('')
 
@@ -868,7 +869,8 @@ export default function App() {
       setDriveFiles(files)
     } catch (e) {
       console.error(e)
-      setDriveToken(null)
+      if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+      alert('Drive 목록 불러오기 실패: ' + e.message)
     } finally {
       setDriveLoading(false)
     }
@@ -891,7 +893,8 @@ export default function App() {
       })
       .catch((e) => {
         console.error(e)
-        setDriveToken(null)
+        if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+        alert('Drive 파일 불러오기 실패: ' + e.message)
       })
       .finally(() => setDriveLoading(false))
   }
@@ -904,7 +907,8 @@ export default function App() {
       .then(() => handleDriveList())
       .catch((e) => {
         console.error(e)
-        setDriveToken(null)
+        if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+        alert('Drive 저장 실패: ' + e.message)
       })
       .finally(() => setDriveLoading(false))
   }

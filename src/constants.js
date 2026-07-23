@@ -18,3 +18,4 @@ export const STORAGE_KEY = 'furboaee_patterns_v1'
 export const INK = '#241f18'
 export const STROKE_MM = 0.7
 export const DEFAULT_SEAM_MM = 10
+export const GOOGLE_CLIENT_ID = '100301763854-9lg6io5ob90hdilk2q61hfo7pg2ic82u.apps.googleusercontent.com'

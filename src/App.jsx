@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useGoogleLogin } from '@react-oauth/google'
 
 import { SHEET_PRESETS, ZOOM_STEPS, DEFAULT_ZOOM, GRID_MM, GRID_BOLD_EVERY, MIN_DRAG_MM, STORAGE_KEY, INK, STROKE_MM, SNAP_MM, MIN_SHEET_MM, MAX_SHEET_MM, DEFAULT_SEAM_MM } from './constants.js'
 import { dist, makeDefaultCurve, findSnapTarget, findFilletPair, computeFilletArc, arcCenter, arcMidpoint, circumcircle } from './utils/geometry.js'
@@ -6,6 +7,7 @@ import { computeClosure } from './utils/closure.js'
 import { buildSvgString, buildTiledPrintHtml, downloadBlob } from './utils/svg.js'
 import { computeSeamPath } from './utils/seam.js'
 import { uid } from './utils/uid.js'
+import { listDriveFiles, readDriveFile, createDriveFile } from './utils/drive.js'
 import { BrandMark, ICONS } from './icons.jsx'
 import Handle from './components/Handle.jsx'
 import PropertiesPanel from './components/PropertiesPanel.jsx'
@@ -41,6 +43,14 @@ export default function App() {
 
   const [savedPatterns, setSavedPatterns] = useState([])
   const [showSaveModal, setShowSaveModal] = useState(false)
+  const [driveToken, setDriveToken] = useState(null)
+  const [driveFiles, setDriveFiles] = useState([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const driveLogin = useGoogleLogin({
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    onSuccess: (res) => setDriveToken(res.access_token),
+    onError: (err) => alert('Google 로그인 오류: ' + JSON.stringify(err)),
+  })
   const [saveName, setSaveName] = useState('')
 
   const [backgroundImage, setBackgroundImage] = useState(null)
@@ -79,6 +89,7 @@ export default function App() {
   const historyRef = useRef([])
   const redoRef = useRef([])
   const panRef = useRef({ active: false })
+  const importInputRef = useRef(null)
 
   function handleBackgroundUpload() {
     fileInputRef.current?.click()
@@ -820,6 +831,88 @@ export default function App() {
     persist(savedPatterns.filter((p) => p.id !== id))
   }
 
+  function handleExportPatterns() {
+    const json = JSON.stringify(savedPatterns, null, 2)
+    downloadBlob(`furboaee-patterns-${Date.now()}.json`, new Blob([json], { type: 'application/json' }))
+  }
+
+  function handleImportPatterns(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const imported = JSON.parse(e.target.result)
+        const arr = Array.isArray(imported) ? imported : [imported]
+        const seen = new Set(savedPatterns.map((p) => p.id))
+        const merged = [...savedPatterns]
+        for (const p of arr) {
+          if (p.id && p.name && p.shapes) {
+            if (!seen.has(p.id)) {
+              merged.push(p)
+              seen.add(p.id)
+            }
+          }
+        }
+        persist(merged)
+      } catch { /* ignore invalid file */ }
+    }
+    reader.readAsText(file)
+  }
+
+  /* ---------------- Drive ---------------- */
+
+  async function handleDriveList() {
+    if (!driveToken) return
+    setDriveLoading(true)
+    try {
+      const files = await listDriveFiles(driveToken)
+      setDriveFiles(files)
+    } catch (e) {
+      console.error(e)
+      if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+      alert('Drive 목록 불러오기 실패: ' + e.message)
+    } finally {
+      setDriveLoading(false)
+    }
+  }
+
+  function handleDriveLogin() {
+    setDriveToken(null)
+    setDriveFiles([])
+    driveLogin()
+  }
+
+  function handleDriveLoad(file) {
+    setDriveLoading(true)
+    readDriveFile(driveToken, file.id)
+      .then((data) => {
+        if (data.shapes) {
+          setShapes(data.shapes)
+          persist(data.shapes)
+        }
+      })
+      .catch((e) => {
+        console.error(e)
+        if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+        alert('Drive 파일 불러오기 실패: ' + e.message)
+      })
+      .finally(() => setDriveLoading(false))
+  }
+
+  function handleDriveSave() {
+    const name = prompt('저장할 이름을 입력하세요', `pattern-${Date.now()}`)
+    if (!name) return
+    setDriveLoading(true)
+    createDriveFile(driveToken, name + '.pattern.json', { name, shapes })
+      .then(() => handleDriveList())
+      .catch((e) => {
+        console.error(e)
+        if (e.message?.includes('401') || e.message?.includes('403')) setDriveToken(null)
+        alert('Drive 저장 실패: ' + e.message)
+      })
+      .finally(() => setDriveLoading(false))
+  }
+
   /* ---------------- grid ---------------- */
 
   const gridLines = useMemo(() => {
@@ -1370,7 +1463,10 @@ export default function App() {
                 onArcRadiusChange={setArcRadius}
               />
             ) : (
-              <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} />
+              <>
+                <LibraryPanel savedPatterns={savedPatterns} onLoad={loadPattern} onDelete={deleteSavedPattern} onExportAll={handleExportPatterns} onImportClick={() => importInputRef.current?.click()} driveToken={driveToken} driveFiles={driveFiles} driveLoading={driveLoading} onDriveLogin={handleDriveLogin} onDriveList={handleDriveList} onDriveLoad={handleDriveLoad} onDriveSave={handleDriveSave} />
+                <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => { handleImportPatterns(e.target.files[0]); e.target.value = '' }} />
+              </>
             )}
           </div>
         </aside>
